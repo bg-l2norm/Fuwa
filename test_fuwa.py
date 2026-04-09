@@ -35,3 +35,19 @@ def test_config_defaults():
     config = load_config()
     assert "watch_folders" in config
     assert "personality" in config
+
+def test_save_config(tmp_path, monkeypatch):
+    import config
+    import json
+
+    test_file = tmp_path / "test_config.json"
+    monkeypatch.setattr(config, "CONFIG_FILE", str(test_file))
+
+    test_data = {"test_key": "test_value", "number": 42}
+    config.save_config(test_data)
+
+    assert test_file.exists()
+    with open(test_file, "r") as f:
+        loaded_data = json.load(f)
+
+    assert loaded_data == test_data
