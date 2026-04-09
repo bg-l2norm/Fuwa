@@ -12,8 +12,21 @@ Fuwa is a minimalistic, rich TUI (Terminal User Interface) buddy powered by LLMs
 
 ## Installation
 
+To avoid dependency conflicts with other projects on your system (dependency hell), it is highly recommended to install Fuwa inside an isolated virtual environment.
+
 1. Clone the repository.
-2. Install the requirements:
+2. Create and activate a Python virtual environment:
+   ```bash
+   # Create a virtual environment named 'venv'
+   python3 -m venv venv
+
+   # Activate the environment (Linux/macOS)
+   source venv/bin/activate
+
+   # Activate the environment (Windows)
+   venv\Scripts\activate
+   ```
+3. Install the requirements into the isolated environment:
    ```bash
    pip install -r requirements.txt
    ```
@@ -46,3 +59,10 @@ python fuwa.py
 ```
 
 Fuwa will wake up, start observing your files, and interact with you!
+
+## Testing
+
+To run the test suite, ensure your virtual environment is activated, then use:
+```bash
+python -m pytest test_fuwa.py
+```
