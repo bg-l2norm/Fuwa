@@ -1,0 +1,6 @@
+textual
+rich
+watchdog
+litellm
+pytest
+pytest-asyncio
