@@ -1,0 +1,5 @@
+textual
+rich
+watchdog
+litellm
+python-dotenv

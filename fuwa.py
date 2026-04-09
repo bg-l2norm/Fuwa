@@ -1,0 +1,149 @@
+from textual.app import App, ComposeResult
+from textual.containers import Container, Vertical, Horizontal
+from textual.widgets import Header, Footer, Static, Input, Button, Log, Label
+
+from axolotl import AxolotlAnimation
+from config import load_config
+from textual import work
+from observer import FileSystemObserver
+from llm import generate_comment, generate_choices, process_interaction
+
+class FuwaApp(App):
+    CSS = """
+    Screen {
+        background: $surface;
+    }
+    #main_container {
+        layout: horizontal;
+        height: 1fr;
+    }
+    #left_panel {
+        width: 30%;
+        height: 1fr;
+        border: solid $accent;
+        align: center middle;
+    }
+    #right_panel {
+        width: 70%;
+        height: 1fr;
+        layout: vertical;
+        border: solid $accent;
+    }
+    #axolotl_view {
+        text-align: center;
+        color: $success;
+        text-style: bold;
+    }
+    #chat_log {
+        height: 1fr;
+        border-bottom: dashed $secondary;
+    }
+    #choices_container {
+        height: auto;
+        layout: vertical;
+        padding: 1;
+    }
+    .choice_btn {
+        width: 100%;
+        margin-bottom: 1;
+    }
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.config = load_config()
+        self.anim = AxolotlAnimation()
+        self.chat_history = []
+        self.observer = FileSystemObserver(self.config.get("watch_folders", ["."]))
+        self.heartbeat_timer = None
+
+    def compose(self) -> ComposeResult:
+        yield Header("Fuwa - Your Terminal Buddy")
+        with Container(id="main_container"):
+            with Container(id="left_panel"):
+                yield Static(self.anim.next_frame(), id="axolotl_view")
+            with Container(id="right_panel"):
+                yield Log(id="chat_log", highlight=True)
+                with Container(id="choices_container"):
+                    yield Button("Loading choices...", id="btn_0", classes="choice_btn", disabled=True)
+                    yield Button("...", id="btn_1", classes="choice_btn", disabled=True)
+                    yield Button("...", id="btn_2", classes="choice_btn", disabled=True)
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self.set_interval(0.5, self.update_animation)
+        self.log_message("System", "Fuwa woke up!")
+        self.observer.start()
+        # Start heartbeat every 60 seconds (or less for testing, let's do 30)
+        self.heartbeat_timer = self.set_interval(30.0, self.trigger_heartbeat)
+        self.trigger_heartbeat() # Initial trigger
+
+    def on_unmount(self) -> None:
+        self.observer.stop()
+
+    def update_animation(self) -> None:
+        view = self.query_one("#axolotl_view", Static)
+        view.update(self.anim.next_frame())
+
+    def log_message(self, sender: str, message: str) -> None:
+        log_view = self.query_one("#chat_log", Log)
+        formatted = f"[bold cyan]{sender}[/]: {message}"
+        log_view.write_line(formatted)
+        self.chat_history.append(f"{sender}: {message}")
+        # Keep history manageable
+        if len(self.chat_history) > 20:
+            self.chat_history.pop(0)
+
+    def update_choices(self, choices: list[str]) -> None:
+        for i in range(3):
+            btn = self.query_one(f"#btn_{i}", Button)
+            if i < len(choices):
+                btn.label = str(choices[i])
+                btn.disabled = False
+            else:
+                btn.label = "..."
+                btn.disabled = True
+
+    @work(exclusive=True, thread=True)
+    def trigger_heartbeat(self) -> None:
+        obs = self.observer.get_recent_observations()
+        personality = self.config.get("personality", "")
+
+        # Disable buttons while generating
+        self.call_from_thread(self.disable_buttons)
+
+        comment = generate_comment(obs, personality)
+        self.call_from_thread(self.log_message, "Fuwa", comment)
+
+        context = "\n".join(self.chat_history[-5:])
+        choices = generate_choices(context, personality)
+        self.call_from_thread(self.update_choices, choices)
+
+    def disable_buttons(self) -> None:
+        for i in range(3):
+            btn = self.query_one(f"#btn_{i}", Button)
+            btn.disabled = True
+            btn.label = "Thinking..."
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        user_choice = str(event.button.label)
+        self.log_message("You", user_choice)
+        self.handle_user_choice(user_choice)
+
+    @work(exclusive=True, thread=True)
+    def handle_user_choice(self, user_choice: str) -> None:
+        self.call_from_thread(self.disable_buttons)
+        personality = self.config.get("personality", "")
+        context = "\n".join(self.chat_history[-5:])
+
+        response = process_interaction(user_choice, context, personality)
+        self.call_from_thread(self.log_message, "Fuwa", response)
+
+        # Generate new choices based on this new context
+        new_context = "\n".join(self.chat_history[-5:])
+        choices = generate_choices(new_context, personality)
+        self.call_from_thread(self.update_choices, choices)
+
+if __name__ == "__main__":
+    app = FuwaApp()
+    app.run()
