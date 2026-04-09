@@ -69,6 +69,7 @@ class FuwaApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
+        self.choice_buttons = [self.query_one(f"#btn_{i}", Button) for i in range(3)]
         self.set_interval(0.5, self.update_animation)
         self.log_message("System", "Fuwa woke up!")
         self.observer.start()
@@ -93,8 +94,7 @@ class FuwaApp(App):
             self.chat_history.pop(0)
 
     def update_choices(self, choices: list[str]) -> None:
-        for i in range(3):
-            btn = self.query_one(f"#btn_{i}", Button)
+        for i, btn in enumerate(self.choice_buttons):
             if i < len(choices):
                 btn.label = str(choices[i])
                 btn.disabled = False
@@ -122,8 +122,7 @@ class FuwaApp(App):
         self.call_from_thread(self.update_choices, choices)
 
     def disable_buttons(self) -> None:
-        for i in range(3):
-            btn = self.query_one(f"#btn_{i}", Button)
+        for btn in self.choice_buttons:
             btn.disabled = True
             btn.label = "Thinking..."
 
