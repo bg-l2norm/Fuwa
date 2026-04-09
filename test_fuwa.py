@@ -35,3 +35,15 @@ def test_config_defaults():
     config = load_config()
     assert "watch_folders" in config
     assert "personality" in config
+
+def test_generate_comment_error_path(mocker):
+    from llm import generate_comment
+
+    # Mock litellm.completion to raise an exception
+    mocker.patch('llm.litellm.completion', side_effect=Exception("Test error"))
+
+    # Call generate_comment with dummy arguments
+    result = generate_comment("test observation", "test personality")
+
+    # Assert that the error is handled and returns the expected fallback message
+    assert result == "(Axolotl looks confused...) Error: Test error"
