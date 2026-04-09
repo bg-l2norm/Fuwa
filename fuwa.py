@@ -31,8 +31,6 @@ class FuwaApp(App):
     }
     #axolotl_view {
         text-align: center;
-        color: $success;
-        text-style: bold;
     }
     #chat_log {
         height: 1fr;
@@ -115,7 +113,11 @@ class FuwaApp(App):
         comment = generate_comment(obs, personality)
         self.call_from_thread(self.log_message, "Fuwa", comment)
 
-        context = "\n".join(self.chat_history[-5:])
+        # Manually append the comment to context so the next LLM call has it immediately
+        history_copy = self.chat_history.copy()
+        history_copy.append(f"Fuwa: {comment}")
+        context = "\n".join(history_copy[-5:])
+
         choices = generate_choices(context, personality)
         self.call_from_thread(self.update_choices, choices)
 
@@ -139,8 +141,11 @@ class FuwaApp(App):
         response = process_interaction(user_choice, context, personality)
         self.call_from_thread(self.log_message, "Fuwa", response)
 
-        # Generate new choices based on this new context
-        new_context = "\n".join(self.chat_history[-5:])
+        # Generate new choices based on this new context, manually appending the new response so it has context
+        history_copy = self.chat_history.copy()
+        history_copy.append(f"Fuwa: {response}")
+        new_context = "\n".join(history_copy[-5:])
+
         choices = generate_choices(new_context, personality)
         self.call_from_thread(self.update_choices, choices)
 
