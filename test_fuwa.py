@@ -35,3 +35,30 @@ def test_config_defaults():
     config = load_config()
     assert "watch_folders" in config
     assert "personality" in config
+
+def test_process_interaction_update_config_failure():
+    from unittest.mock import patch, MagicMock
+    from llm import process_interaction
+
+    with patch("llm.litellm.completion") as mock_completion, \
+         patch("config.update_config") as mock_update_config:
+
+        mock_choice1 = MagicMock()
+        mock_choice1.message.content = "AI response"
+        mock_response1 = MagicMock()
+        mock_response1.choices = [mock_choice1]
+
+        mock_choice2 = MagicMock()
+        mock_choice2.message.content = "New personality"
+        mock_response2 = MagicMock()
+        mock_response2.choices = [mock_choice2]
+
+        mock_completion.side_effect = [mock_response1, mock_response2]
+
+        mock_update_config.side_effect = Exception("Config update failed")
+
+        result = process_interaction("user interaction", "context", "old personality")
+
+        assert result == "AI response"
+        assert mock_completion.call_count == 2
+        mock_update_config.assert_called_once_with("personality", "New personality")
