@@ -12,10 +12,17 @@ DEFAULT_CONFIG = {
     "personality": "You are Fuwa, a cute, slightly sarcastic, and extremely motivating axolotl terminal companion. You observe the user's coding folders and make comments. If they slack off, make them feel guilty. If they work hard, praise them. Your comments should be short (1-2 sentences)."
 }
 
+_cached_config = None
+
 def load_config():
+    global _cached_config
+    if _cached_config is not None:
+        return _cached_config
+
     if not os.path.exists(CONFIG_FILE):
         save_config(DEFAULT_CONFIG)
-        return DEFAULT_CONFIG.copy()
+        _cached_config = DEFAULT_CONFIG.copy()
+        return _cached_config
 
     try:
         with open(CONFIG_FILE, "r") as f:
@@ -24,15 +31,18 @@ def load_config():
             for k, v in DEFAULT_CONFIG.items():
                 if k not in config:
                     config[k] = v
+            _cached_config = config
             return config
     except Exception as e:
         print(f"Error loading config: {e}")
         return DEFAULT_CONFIG.copy()
 
 def save_config(config):
+    global _cached_config
     try:
         with open(CONFIG_FILE, "w") as f:
             json.dump(config, f, indent=4)
+        _cached_config = config
     except Exception as e:
         print(f"Error saving config: {e}")
 
