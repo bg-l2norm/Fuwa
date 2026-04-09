@@ -1,33 +1,24 @@
-AXOLOTL_FRAMES = [
-r"""
-  \ \    / /
-   \ \__/ /
-  < ( o.o ) >
-  <  /   \  >
-    (_____)
-""",
-r"""
-  \ \    / /
-   \ \__/ /
-  < ( -.- ) >
-  <  /   \  >
-    (_____)
-""",
-r"""
-  \ \    / /
-   \ \__/ /
-  < ( ^.^ ) >
-  <  /   \  >
-    (_____)
-""",
-r"""
-  \ \    / /
-   \ \__/ /
-  < ( o_o ) >
-  <  /   \  >
-    (_____)
-""",
-]
+from textual.app import App
+from textual.widgets import Static
+
+# We will use rich text markup.
+# Pink body: #ffb6c1, Dark Pink gills: #ff69b4, Black eyes: #000000
+
+FRAME_1 = """[#ff69b4] ▄▀▄     ▄▀▄[/]
+[#ff69b4] █ [#ffb6c1]▀▄▄▄▄▄▀[/] █[/]
+[#ff69b4]▀█[#ffb6c1] █ [#000000]▄[/#000000] [#ffb6c1]▄[/#ffb6c1] [#000000]▄[/#000000] █[/]█▀[/]
+[#ff69b4] ▀▄[#ffb6c1]▀▄▀▄▀▄▀[/]▄▀[/]
+[#ffb6c1]   ▀▄▄▄▄▄▀[/]
+"""
+
+FRAME_2 = """[#ff69b4] ▄▀▄     ▄▀▄[/]
+[#ff69b4] █ [#ffb6c1]▀▄▄▄▄▄▀[/] █[/]
+[#ff69b4]▀█[#ffb6c1] █ [#000000]▀[/#000000] [#ffb6c1]▄[/#ffb6c1] [#000000]▀[/#000000] █[/]█▀[/]
+[#ff69b4] ▀▄[#ffb6c1]▀▄▀▄▀▄▀[/]▄▀[/]
+[#ffb6c1]   ▀▄▄▄▄▄▀[/]
+"""
+
+AXOLOTL_FRAMES = [FRAME_1, FRAME_2, FRAME_1, FRAME_2]
 
 def get_frame(index: int) -> str:
     """Returns the frame at the given index."""
@@ -41,15 +32,3 @@ class AxolotlAnimation:
         frame = get_frame(self.frame_index)
         self.frame_index += 1
         return frame
-
-    def set_emotion(self, emotion: str) -> str:
-        # Override current frame to specific emotion if needed
-        # Just return the frame for the emotion
-        if emotion == "blink":
-            return AXOLOTL_FRAMES[1]
-        elif emotion == "happy":
-            return AXOLOTL_FRAMES[2]
-        elif emotion == "surprised":
-            return AXOLOTL_FRAMES[3]
-        else:
-            return AXOLOTL_FRAMES[0]
