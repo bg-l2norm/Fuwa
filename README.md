@@ -9,8 +9,6 @@ Fuwa is a minimalistic, rich TUI (Terminal User Interface) buddy powered by LLMs
 
 ![Fuwa](assets/demo.svg)
 
-![Axolotl](assets/normal_1.png)
-
 ## Features
 
 | Feature | Description |
