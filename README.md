@@ -20,7 +20,28 @@ Fuwa is a minimalistic, rich TUI (Terminal User Interface) buddy powered by LLMs
 | ✨ **Rich TUI** | A sleek, minimal Textual interface featuring a cute pixel-art style animated Axolotl. |
 | 🧠 **LLM Powered** | Uses `litellm` under the hood, allowing you to use OpenAI, Anthropic, OpenRouter, or any other supported provider. |
 
-## Installation
+## Automated Scripts (Recommended)
+
+For a simple and automated experience, use the provided `fuwa.sh` script.
+
+```bash
+# Install Fuwa (creates isolated venv and installs dependencies)
+./fuwa.sh install
+
+# Run Fuwa
+./fuwa.sh run
+
+# Or just run it without arguments to launch
+./fuwa.sh
+
+# Update Fuwa (pulls latest code and updates dependencies)
+./fuwa.sh update
+
+# Troubleshooting (checks environment and dependencies, fixes basic issues)
+./fuwa.sh doctor
+```
+
+## Manual Installation
 
 To avoid dependency conflicts with other projects on your system (dependency hell), it is highly recommended to install Fuwa inside an isolated virtual environment.
 
@@ -63,8 +84,13 @@ On first run, Fuwa generates a `config.json` file in the root directory. You mus
 
 ## Running Fuwa
 
-Run the main application:
+Run the main application (the automated script handles activating the environment for you):
 ```bash
+./fuwa.sh run
+```
+Or manually:
+```bash
+source venv/bin/activate
 python fuwa.py
 ```
 
