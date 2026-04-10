@@ -31,17 +31,21 @@ def generate_comment(observations: str, personality: str) -> str:
 
     system_prompt = (
         f"{personality}\n\n"
-        "You are observing the user's workspace. Here are the recent file events:\n"
-        f"```\n{observations}\n```\n"
+        "You are observing the user's workspace.\n"
         "Give a short, rich, emotional response (1-2 sentences). "
         "If they are procrastinating (no recent activity), make them feel guilty or challenge them! "
         "If they are working hard (many file modifications/creations), praise them or be sarcastic about their 'dedication'. "
         "Output ONLY the raw text response."
     )
 
+    user_message = f"Here are the recent file events:\n```\n{observations}\n```"
+
     try:
         response = litellm.completion(
-            messages=[{"role": "system", "content": system_prompt}],
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ],
             max_tokens=150,
             **kwargs
         )
@@ -55,16 +59,20 @@ def generate_choices(recent_context: str, personality: str) -> list[str]:
 
     system_prompt = (
         f"{personality}\n\n"
-        "Based on the following recent context/chat log, generate 3 short, text-RPG style choices (actions or dialogue) "
+        "Based on the recent context/chat log, generate 3 short, text-RPG style choices (actions or dialogue) "
         "for the user to pick from. They should be emotionally engaging, funny, or play into the guilt/praise dynamic.\n"
-        f"Context:\n{recent_context}\n\n"
         "Return the response ONLY as a valid JSON object with a single key 'choices' containing an array of 3 strings. Example: "
         '{"choices": ["I am working on it, promise!", "Ignore the axolotl.", "*Pat its head*"]}'
     )
 
+    user_message = f"Context:\n{recent_context}"
+
     try:
         response = litellm.completion(
-            messages=[{"role": "system", "content": system_prompt}],
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ],
             response_format={ "type": "json_object" } if "gpt" in kwargs["model"] else None,
             max_tokens=200,
             **kwargs
@@ -96,17 +104,23 @@ def process_interaction(interaction: str, recent_context: str, personality: str)
 
     system_prompt = (
         f"{personality}\n\n"
-        "The user just chose this action/dialogue:\n"
-        f"> {interaction}\n\n"
-        f"Recent context:\n{recent_context}\n\n"
-        "Respond in character. Be emotional, reactive. If they chose to slack off, amplify the guilt! "
+        "Respond in character to the user's action/dialogue. Be emotional, reactive. If they chose to slack off, amplify the guilt! "
         "If they chose to work, act satisfied but demanding. Short response (1-2 sentences). "
         "Output ONLY the text."
     )
 
+    user_message = (
+        "The user just chose this action/dialogue:\n"
+        f"> {interaction}\n\n"
+        f"Recent context:\n{recent_context}"
+    )
+
     try:
         response = litellm.completion(
-            messages=[{"role": "system", "content": system_prompt}],
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ],
             max_tokens=150,
             **kwargs
         )
@@ -115,8 +129,6 @@ def process_interaction(interaction: str, recent_context: str, personality: str)
         # Trigger an update of the personality based on this interaction
         update_prompt = (
             f"Current personality: {personality}\n\n"
-            f"User interaction: {interaction}\n\n"
-            f"AI response: {ai_response}\n\n"
             "Based on this interaction, write a slightly updated, cohesive personality description for the axolotl. "
             "Keep the core traits (cute, slightly sarcastic, demanding, emotional) but subtly shift the tone "
             "based on how the user has been acting (e.g., if they are slacking, maybe it becomes slightly more "
@@ -124,9 +136,17 @@ def process_interaction(interaction: str, recent_context: str, personality: str)
             "Output ONLY the new personality text."
         )
 
+        update_user_message = (
+            f"User interaction: {interaction}\n\n"
+            f"AI response: {ai_response}"
+        )
+
         try:
             update_response = litellm.completion(
-                messages=[{"role": "system", "content": update_prompt}],
+                messages=[
+                    {"role": "system", "content": update_prompt},
+                    {"role": "user", "content": update_user_message}
+                ],
                 max_tokens=200,
                 **kwargs
             )
