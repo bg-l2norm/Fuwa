@@ -100,7 +100,7 @@ def do_doctor():
     console.print("✅ Python check passed.")
 
     console.print("\n[cyan]Checking Virtual Environment...[/cyan]")
-    if not os.path.exists("venv/bin/activate"):
+    if not (os.path.exists("venv/bin/activate") and os.path.exists("venv/.fuwa_installed")):
         console.print("[bold yellow]⚠️ Issue: Valid virtual environment 'venv' not found.[/bold yellow]")
         issues_found += 1
 
