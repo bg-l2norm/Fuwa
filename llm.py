@@ -1,6 +1,7 @@
 import json
-import litellm
 import os
+import urllib.request
+import urllib.error
 from config import load_config
 from axolotl import AxolotlAnimation
 
@@ -10,21 +11,72 @@ def _get_api_kwargs():
     provider = config.get("provider", "openai")
     api_key = config.get("api_key", "")
 
-    # Prefix the model with provider if it's openrouter or others that litellm expects
-    if provider == "openrouter" and not model.startswith("openrouter/"):
-        model = f"openrouter/{model}"
+    # For OpenRouter, if the user already provided the openrouter/ prefix, strip it so the actual API
+    # receives the correct model.
+    if provider == "openrouter" and model.startswith("openrouter/"):
+        model = model[len("openrouter/"):]
 
-    kwargs = {"model": model}
+    return {
+        "model": model,
+        "provider": provider,
+        "api_key": api_key
+    }
 
-    if api_key:
-        if provider == "openai":
-            os.environ["OPENAI_API_KEY"] = api_key
-        elif provider == "anthropic":
-            os.environ["ANTHROPIC_API_KEY"] = api_key
-        elif provider == "openrouter":
-            os.environ["OPENROUTER_API_KEY"] = api_key
+def simple_completion(messages, model, provider, api_key, max_tokens=100, response_format=None):
+    if provider in ["openai", "openrouter"]:
+        url = "https://api.openai.com/v1/chat/completions" if provider == "openai" else "https://openrouter.ai/api/v1/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        }
+        data = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": max_tokens
+        }
+        if response_format:
+            data["response_format"] = response_format
 
-    return kwargs
+        req = urllib.request.Request(url, data=json.dumps(data).encode("utf-8"), headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req) as response:
+                result = json.loads(response.read().decode("utf-8"))
+                return result["choices"][0]["message"]["content"]
+        except urllib.error.HTTPError as e:
+            raise Exception(f"HTTP Error {e.code}: {e.read().decode('utf-8')}")
+
+    elif provider == "anthropic":
+        url = "https://api.anthropic.com/v1/messages"
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+        }
+        system_msg = ""
+        anthropic_messages = []
+        for msg in messages:
+            if msg["role"] == "system":
+                system_msg += msg["content"] + "\n"
+            else:
+                anthropic_messages.append({"role": msg["role"], "content": msg["content"]})
+
+        data = {
+            "model": model,
+            "messages": anthropic_messages,
+            "max_tokens": max_tokens
+        }
+        if system_msg:
+            data["system"] = system_msg.strip()
+
+        req = urllib.request.Request(url, data=json.dumps(data).encode("utf-8"), headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req) as response:
+                result = json.loads(response.read().decode("utf-8"))
+                return result["content"][0]["text"]
+        except urllib.error.HTTPError as e:
+            raise Exception(f"HTTP Error {e.code}: {e.read().decode('utf-8')}")
+
+    raise Exception(f"Unsupported provider: {provider}")
 
 def summarize_file(filename: str, content: str) -> str:
     """Generates a high-level summary of a file's contents to capture intent/emotion."""
@@ -40,15 +92,17 @@ def summarize_file(filename: str, content: str) -> str:
     user_message = f"File: {filename}\nContent:\n```\n{content}\n```"
 
     try:
-        response = litellm.completion(
+        response = simple_completion(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
             ],
-            max_tokens=100,
-            **kwargs
+            model=kwargs["model"],
+            provider=kwargs["provider"],
+            api_key=kwargs["api_key"],
+            max_tokens=100
         )
-        return response.choices[0].message.content.strip()
+        return response.strip()
     except Exception as e:
         print(f"Error summarizing file: {e}")
         return "Failed to summarize file."
@@ -77,15 +131,17 @@ def generate_comment(observations: str, personality: str, file_memories: str = "
         user_message += f"Here are summaries of some of the files for context:\n```\n{file_memories}\n```"
 
     try:
-        response = litellm.completion(
+        response = simple_completion(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
             ],
-            max_tokens=150,
-            **kwargs
+            model=kwargs["model"],
+            provider=kwargs["provider"],
+            api_key=kwargs["api_key"],
+            max_tokens=150
         )
-        return response.choices[0].message.content.strip()
+        return response.strip()
     except Exception as e:
         return f"(Axolotl looks confused...) Error: {str(e)}"
 
@@ -104,16 +160,19 @@ def generate_choices(recent_context: str, personality: str) -> list[str]:
     user_message = f"Context:\n{recent_context}"
 
     try:
-        response = litellm.completion(
+        response_format = {"type": "json_object"} if "gpt" in kwargs["model"] else None
+        content = simple_completion(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
             ],
-            response_format={ "type": "json_object" } if "gpt" in kwargs["model"] else None,
+            model=kwargs["model"],
+            provider=kwargs["provider"],
+            api_key=kwargs["api_key"],
             max_tokens=200,
-            **kwargs
+            response_format=response_format
         )
-        content = response.choices[0].message.content.strip()
+        content = content.strip()
 
         # Simple extraction if not returned cleanly
         if "```json" in content:
@@ -157,15 +216,17 @@ def process_interaction(interaction: str, recent_context: str, personality: str)
     )
 
     try:
-        response = litellm.completion(
+        ai_response = simple_completion(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
             ],
-            max_tokens=150,
-            **kwargs
+            model=kwargs["model"],
+            provider=kwargs["provider"],
+            api_key=kwargs["api_key"],
+            max_tokens=150
         )
-        ai_response = response.choices[0].message.content.strip()
+        ai_response = ai_response.strip()
 
         # Trigger an update of the personality based on this interaction
         update_prompt = (
@@ -183,15 +244,17 @@ def process_interaction(interaction: str, recent_context: str, personality: str)
         )
 
         try:
-            update_response = litellm.completion(
+            new_personality = simple_completion(
                 messages=[
                     {"role": "system", "content": update_prompt},
                     {"role": "user", "content": update_user_message}
                 ],
-                max_tokens=200,
-                **kwargs
+                model=kwargs["model"],
+                provider=kwargs["provider"],
+                api_key=kwargs["api_key"],
+                max_tokens=200
             )
-            new_personality = update_response.choices[0].message.content.strip()
+            new_personality = new_personality.strip()
             if new_personality:
                 update_config("personality", new_personality)
         except Exception:
