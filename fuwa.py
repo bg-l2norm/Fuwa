@@ -60,7 +60,7 @@ class FuwaApp(App):
     def __init__(self):
         super().__init__()
         self.config = load_config()
-        self.anim = AxolotlAnimation()
+        self.anim = AxolotlAnimation(buddy_size=self.config.get("buddy_size", "normal"))
         self.chat_history = []
         self.observer = FileSystemObserver(self.config.get("watch_folders", ["."]))
         self.heartbeat_timer = None

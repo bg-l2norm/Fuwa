@@ -10,10 +10,17 @@ from ansi_converter import convert_and_save_script, convert_image_to_ansi
 from PIL import Image, ImageDraw
 
 class AxolotlAnimation:
-    def __init__(self):
+    def __init__(self, buddy_size="normal"):
         self.frame_index = 0
         self.mood = "NORMAL"
         self.frames = {}
+        self.buddy_size = buddy_size.lower()
+        if self.buddy_size == "small":
+            self.target_width = 18
+        elif self.buddy_size == "large":
+            self.target_width = 40
+        else:
+            self.target_width = 28
         self._load_assets()
 
     @staticmethod
@@ -55,7 +62,7 @@ class AxolotlAnimation:
             files.sort(key=lambda x: x[0])
             for _, filepath, filename in files:
                 try:
-                    sh_filename = filename.replace(".png", ".sh")
+                    sh_filename = filename.replace(".png", f"_{self.target_width}.sh")
                     sh_filepath = os.path.join(ansi_dir, sh_filename)
 
                     # Check if sh script needs to be generated
@@ -66,7 +73,7 @@ class AxolotlAnimation:
                         generate = True
 
                     if generate:
-                        convert_and_save_script(filepath, sh_filepath)
+                        convert_and_save_script(filepath, sh_filepath, target_width=self.target_width)
 
                     # Read the generated bash script
                     if os.path.exists(sh_filepath):
@@ -114,7 +121,7 @@ class AxolotlAnimation:
                     tmp_path = tmp.name
                 try:
                     img.save(tmp_path)
-                    ansi_str = convert_image_to_ansi(tmp_path, target_width=40)
+                    ansi_str = convert_image_to_ansi(tmp_path, target_width=self.target_width)
                 finally:
                     if os.path.exists(tmp_path):
                         os.remove(tmp_path)

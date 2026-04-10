@@ -118,9 +118,12 @@ def convert_image_to_ansi(image_path, target_width=40):
     rgb_resized = rgb_img.resize((out_width, target_height), Image.Resampling.LANCZOS)
     alpha_resized = alpha_img.resize((out_width, target_height), Image.Resampling.LANCZOS)
 
-    # 3. Apply a mild saturation boost (1.15x)
-    enhancer = ImageEnhance.Color(rgb_resized)
-    rgb_enhanced = enhancer.enhance(1.15)
+    # 3. Apply contrast boost to fix washed out darks (like eyes) and mild saturation boost (1.15x)
+    contrast_enhancer = ImageEnhance.Contrast(rgb_resized)
+    rgb_contrasted = contrast_enhancer.enhance(1.5)
+
+    color_enhancer = ImageEnhance.Color(rgb_contrasted)
+    rgb_enhanced = color_enhancer.enhance(1.15)
 
     # Recombine
     final_img = Image.merge("RGBA", (*rgb_enhanced.split(), alpha_resized))
