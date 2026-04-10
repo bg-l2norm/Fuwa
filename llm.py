@@ -35,6 +35,8 @@ def generate_comment(observations: str, personality: str) -> str:
         "Give a short, rich, emotional response (1-2 sentences). "
         "If they are procrastinating (no recent activity), make them feel guilty or challenge them! "
         "If they are working hard (many file modifications/creations), praise them or be sarcastic about their 'dedication'. "
+        "Include a mood tag at the VERY BEGINNING of your response. Valid tags: [MOOD: NORMAL], [MOOD: HAPPY], [MOOD: ANGRY], [MOOD: SLEEPY]. "
+        "For example: '[MOOD: HAPPY] Wow, you are working so hard!' "
         "Output ONLY the raw text response."
     )
 
@@ -106,6 +108,8 @@ def process_interaction(interaction: str, recent_context: str, personality: str)
         f"{personality}\n\n"
         "Respond in character to the user's action/dialogue. Be emotional, reactive. If they chose to slack off, amplify the guilt! "
         "If they chose to work, act satisfied but demanding. Short response (1-2 sentences). "
+        "Include a mood tag at the VERY BEGINNING of your response. Valid tags: [MOOD: NORMAL], [MOOD: HAPPY], [MOOD: ANGRY], [MOOD: SLEEPY]. "
+        "For example: '[MOOD: ANGRY] Do not ignore me!' "
         "Output ONLY the text."
     )
 
