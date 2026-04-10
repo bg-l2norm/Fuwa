@@ -27,7 +27,7 @@ def convert_image_to_ansi(image_path, target_width=40):
     valid_queue = []
     for (x, y) in queue:
         r, g, b, a = pixels[x, y]
-        if r > 240 and g > 240 and b > 240:
+        if a == 0 or ((255 - r)**2 + (255 - g)**2 + (255 - b)**2 < 1000):
             valid_queue.append((x, y))
             visited.add((x, y))
 
@@ -42,21 +42,35 @@ def convert_image_to_ansi(image_path, target_width=40):
                 if (nx, ny) not in visited:
                     visited.add((nx, ny))
                     nr, ng, nb, na = pixels[nx, ny]
-                    if nr > 240 and ng > 240 and nb > 240:
+                    if na == 0 or ((255 - nr)**2 + (255 - ng)**2 + (255 - nb)**2 < 1000):
                         valid_queue.append((nx, ny))
 
-    bbox = img.getbbox()
-    if bbox:
-        img = img.crop(bbox)
+    min_x = width
+    min_y = height
+    max_x = 0
+    max_y = 0
+    for y in range(height):
+        for x in range(width):
+            _, _, _, a = pixels[x, y]
+            if a > 0:
+                if x < min_x: min_x = x
+                if y < min_y: min_y = y
+                if x > max_x: max_x = x
+                if y > max_y: max_y = y
+
+    if min_x <= max_x and min_y <= max_y:
+        img = img.crop((min_x, min_y, max_x + 1, max_y + 1))
     # --- End Background Removal ---
 
-    width, height = img.size
+    orig_width, orig_height = img.size
 
-    target_height = height
+    target_height = orig_height
     if target_width:
-        aspect_ratio = height / width
-        width = target_width
-        target_height = int(width * aspect_ratio)
+        aspect_ratio = orig_height / orig_width
+        out_width = target_width
+        target_height = int(out_width * aspect_ratio)
+    else:
+        out_width = orig_width
 
     if target_height % 2 != 0:
         target_height += 1
@@ -101,8 +115,8 @@ def convert_image_to_ansi(image_path, target_width=40):
     rgb_img = dilated_img.convert("RGB")
     alpha_img = dilated_img.split()[3]
 
-    rgb_resized = rgb_img.resize((width, target_height), Image.Resampling.LANCZOS)
-    alpha_resized = alpha_img.resize((width, target_height), Image.Resampling.LANCZOS)
+    rgb_resized = rgb_img.resize((out_width, target_height), Image.Resampling.LANCZOS)
+    alpha_resized = alpha_img.resize((out_width, target_height), Image.Resampling.LANCZOS)
 
     # 3. Apply a mild saturation boost (1.15x)
     enhancer = ImageEnhance.Color(rgb_resized)
@@ -116,7 +130,7 @@ def convert_image_to_ansi(image_path, target_width=40):
     final_pixels = final_img.load()
     for y in range(0, target_height, 2):
         line = ""
-        for x in range(width):
+        for x in range(out_width):
             r1, g1, b1, a1 = final_pixels[x, y]
             r2, g2, b2, a2 = final_pixels[x, y+1] if y+1 < target_height else (0, 0, 0, 0)
 
