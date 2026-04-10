@@ -32,9 +32,6 @@ For a simple and automated experience, use the provided `fuwa.sh` script. It han
 # Run Fuwa
 ./fuwa.sh run
 
-# Or just run it without arguments to launch
-./fuwa.sh
-
 # Update Fuwa (pulls latest code and updates dependencies)
 ./fuwa.sh update
 
