@@ -5,6 +5,9 @@
 ![Terminal](https://img.shields.io/badge/terminal-TUI-purple.svg)
 ![LLM](https://img.shields.io/badge/LLM-Powered-orange.svg)
 
+> [!WARNING]
+> This project is still a work in progress and may change significantly.
+
 Fuwa is a minimalistic, rich TUI (Terminal User Interface) buddy powered by LLMs. It acts as an emotional, slightly demanding terminal companion (an axolotl!) that observes your high-level file activities and blurts out motivation, challenges, or fun comments.
 
 <img src="assets/demo.svg" alt="Fuwa" width="25%">
