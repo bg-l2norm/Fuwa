@@ -1,14 +1,30 @@
 # Fuwa 🌸
 
+![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
+![Terminal](https://img.shields.io/badge/terminal-TUI-purple.svg)
+![LLM](https://img.shields.io/badge/LLM-Powered-orange.svg)
+
 Fuwa is a minimalistic, rich TUI (Terminal User Interface) buddy powered by LLMs. It acts as an emotional, slightly demanding terminal companion (an axolotl!) that observes your high-level file activities and blurts out motivation, challenges, or fun comments.
 
 ![Fuwa](https://raw.githubusercontent.com/jules-ai/fuwa-assets/main/demo.png)
 
+```
+ ▄▀▄     ▄▀▄
+ █ ▀▄▄▄▄▄▀ █
+▀█ █ ▄ ▄ ▄ █ █▀
+ ▀▄▀▄▀▄▀▄▀▄▀
+   ▀▄▄▄▄▄▀
+```
+
 ## Features
-- **File System Observer:** Watches your folders for changes and understands when you are working hard or slacking off.
-- **Dynamic Personality:** Fuwa's personality evolves based on your text-RPG style interactions with it.
-- **Rich TUI:** A sleek, minimal Textual interface featuring a cute pixel-art style animated Axolotl.
-- **LLM Powered:** Uses `litellm` under the hood, allowing you to use OpenAI, Anthropic, OpenRouter, or any other supported provider.
+
+| Feature | Description |
+| :--- | :--- |
+| 📁 **File System Observer** | Watches your folders for changes and understands when you are working hard or slacking off. |
+| 🎭 **Dynamic Personality** | Fuwa's personality evolves based on your text-RPG style interactions with it. |
+| ✨ **Rich TUI** | A sleek, minimal Textual interface featuring a cute pixel-art style animated Axolotl. |
+| 🧠 **LLM Powered** | Uses `litellm` under the hood, allowing you to use OpenAI, Anthropic, OpenRouter, or any other supported provider. |
 
 ## Installation
 
