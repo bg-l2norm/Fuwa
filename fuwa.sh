@@ -41,7 +41,16 @@ do_install() {
     check_python_version "$PYTHON_CMD"
     if [ $? -ne 0 ]; then return 1; fi
 
-    if [ ! -d "venv" ]; then
+    if [ ! -f "requirements.txt" ]; then
+        echo "❌ Error: requirements.txt not found."
+        return 1
+    fi
+
+    if [ ! -f "venv/bin/activate" ]; then
+        if [ -e "venv" ]; then
+            echo "⚠️  Found invalid 'venv' (not a working virtual environment). Removing it..."
+            rm -rf venv
+        fi
         echo "📦 Creating virtual environment..."
         if ! $PYTHON_CMD -m venv venv; then
             echo "❌ Error: Failed to create virtual environment."
@@ -61,6 +70,8 @@ do_install() {
         return 1
     fi
 
+    touch venv/.fuwa_installed
+
     echo "✅ Fuwa Installation Complete! Run './fuwa.sh run' to start."
 }
 
@@ -73,7 +84,12 @@ do_update() {
         git merge FETCH_HEAD || { echo "❌ Error: git merge failed. Please resolve conflicts manually."; exit 1; }
     fi
 
-    if [ -d "venv" ]; then
+    if [ ! -f "requirements.txt" ]; then
+        echo "❌ Error: requirements.txt not found."
+        return 1
+    fi
+
+    if [ -f "venv/bin/activate" ] && [ -f "venv/.fuwa_installed" ]; then
         source venv/bin/activate || { echo "❌ Error: Failed to activate virtual environment."; return 1; }
         echo "⬇️ Updating dependencies..."
         if ! pip install -r requirements.txt; then
@@ -82,7 +98,7 @@ do_update() {
         fi
         echo "✅ Fuwa updated successfully!"
     else
-        echo "⚠️ Virtual environment not found. Please run './fuwa.sh install' first."
+        echo "⚠️ Virtual environment not found or incomplete. Please run './fuwa.sh install' first."
         return 1
     fi
 }
@@ -103,9 +119,13 @@ do_doctor() {
     fi
     echo "✅ Python check passed."
 
-    if [ ! -d "venv" ]; then
-        echo "⚠️ Issue: Virtual environment 'venv' not found."
+    if [ ! -f "venv/bin/activate" ]; then
+        echo "⚠️ Issue: Valid virtual environment 'venv' not found."
         ISSUES_FOUND=$((ISSUES_FOUND+1))
+        if [ -e "venv" ]; then
+            echo "🔧 Fixing: Removing invalid 'venv'..."
+            rm -rf venv
+        fi
         echo "🔧 Fixing: Creating virtual environment..."
         if $PYTHON_CMD -m venv venv; then
             echo "✅ Fixed: Virtual environment created."
@@ -119,11 +139,12 @@ do_doctor() {
 
     if [ -f "venv/bin/activate" ]; then
         source venv/bin/activate
-        if ! python -c "import textual, litellm, watchdog" 2>/dev/null; then
-            echo "⚠️ Issue: Missing dependencies."
+        if ! python -c "import textual, litellm, watchdog" 2>/dev/null || [ ! -f "venv/.fuwa_installed" ]; then
+            echo "⚠️ Issue: Missing dependencies or incomplete installation."
             ISSUES_FOUND=$((ISSUES_FOUND+1))
             echo "🔧 Fixing: Installing dependencies..."
-            if pip install -r requirements.txt >/dev/null 2>&1; then
+            if [ -f "requirements.txt" ] && pip install -r requirements.txt >/dev/null 2>&1; then
+                touch venv/.fuwa_installed
                 echo "✅ Fixed: Dependencies installed."
                 ISSUES_FIXED=$((ISSUES_FIXED+1))
             else
@@ -169,10 +190,20 @@ do_doctor() {
 }
 
 do_run() {
-    if [ ! -d "venv" ]; then
-        echo "⚠️ Virtual environment not found. Running install first..."
+    if [ ! -f "venv/bin/activate" ] || [ ! -f "venv/.fuwa_installed" ]; then
+        echo "⚠️ Virtual environment not found or incomplete. Running install first..."
         do_install
+        # If install fails, don't try to run
+        if [ $? -ne 0 ]; then
+            return 1
+        fi
     fi
+
+    if [ ! -f "fuwa.py" ]; then
+        echo "❌ Error: fuwa.py not found."
+        return 1
+    fi
+
     source venv/bin/activate
     python fuwa.py
 }
