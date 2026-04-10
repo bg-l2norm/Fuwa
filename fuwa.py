@@ -118,11 +118,11 @@ class FuwaApp(App):
 
     def extract_and_set_mood(self, text: str) -> str:
         """Extracts mood tag like [MOOD: HAPPY], sets the mood, and returns text without the tag."""
-        match = re.search(r"\[MOOD:\s*([A-Z]+)\]", text, re.IGNORECASE)
+        match = re.search(r"\[MOOD:\s*([a-zA-Z0-9_]+)\]", text, re.IGNORECASE)
         if match:
             mood = match.group(1).upper()
             self.anim.set_mood(mood)
-            text = re.sub(r"\[MOOD:\s*[A-Z]+\]\s*", "", text, flags=re.IGNORECASE).strip()
+            text = re.sub(r"\[MOOD:\s*[a-zA-Z0-9_]+\]\s*", "", text, flags=re.IGNORECASE).strip()
         return text
 
     @work(exclusive=True, thread=True)

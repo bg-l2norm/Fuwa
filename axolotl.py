@@ -11,6 +11,23 @@ class AxolotlAnimation:
         self.frames = {}
         self._load_assets()
 
+    @staticmethod
+    def get_available_moods() -> list[str]:
+        import re
+        assets_dir = "assets"
+        moods = set()
+
+        if os.path.exists(assets_dir):
+            for filename in os.listdir(assets_dir):
+                match = re.match(r"^([a-zA-Z0-9_]+)_(\d+)\.png$", filename)
+                if match:
+                    moods.add(match.group(1).upper())
+
+        if not moods:
+            return ["NORMAL", "HAPPY", "ANGRY", "SLEEPY"]
+
+        return sorted(list(moods))
+
     def _load_assets(self):
         import re
         from collections import defaultdict
