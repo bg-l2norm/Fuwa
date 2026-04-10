@@ -3,3 +3,5 @@ rich
 watchdog
 litellm
 python-dotenv
+Pillow
+rich-pixels
