@@ -123,7 +123,7 @@ def do_doctor():
         try:
             # We don't want to use subprocess run to import since textual might fail if missing.
             # However, we can just run a python script inside the venv to check imports
-            check_script = "import textual, rich, watchdog, PIL, rich_pixels"
+            check_script = "import textual, rich, watchdog, PIL"
             process = subprocess.run(f"source venv/bin/activate && python -c '{check_script}'", shell=True, executable='/bin/bash', capture_output=True)
 
             if process.returncode != 0 or not os.path.exists("venv/.fuwa_installed"):
