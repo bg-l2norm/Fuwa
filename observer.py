@@ -31,7 +31,15 @@ class ChangeHandler(FileSystemEventHandler):
 
         # Keep things simple for the LLM
         timestamp = time.strftime("%H:%M:%S")
-        self.recent_events.append(f"[{timestamp}] File {action}: {filename}")
+
+        event_data = {
+            "timestamp": timestamp,
+            "action": action,
+            "filename": filename,
+            "absolute_path": str(Path(event.src_path).resolve()),
+            "formatted_str": f"[{timestamp}] File {action}: {filename}"
+        }
+        self.recent_events.append(event_data)
 
     def on_modified(self, event):
         self.process(event)
@@ -69,10 +77,12 @@ class FileSystemObserver:
             self.observer.stop()
             self.observer.join()
 
-    def get_recent_observations(self) -> str:
-        if not self.recent_events:
-            return "No recent file activity."
-
+    def get_recent_events(self) -> list:
         events = list(self.recent_events)
         self.recent_events.clear() # Clear after reading so we don't repeat
-        return "\n".join(events)
+        return events
+
+    def format_observations(self, events: list) -> str:
+        if not events:
+            return "No recent file activity."
+        return "\n".join([e["formatted_str"] for e in events])

@@ -43,7 +43,7 @@ def test_generate_comment_error_path(mocker):
     mocker.patch('llm.litellm.completion', side_effect=Exception("Test error"))
 
     # Call generate_comment with dummy arguments
-    result = generate_comment("test observation", "test personality")
+    result = generate_comment("test observation", "test personality", "test memory")
 
     # Assert that the error is handled and returns the expected fallback message
     assert result == "(Axolotl looks confused...) Error: Test error"

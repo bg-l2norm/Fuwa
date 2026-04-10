@@ -5,10 +5,12 @@ from textual.widgets import Header, Footer, Static, Input, Button, Log, Label
 import re
 from textual import work
 
+import os
 from axolotl import AxolotlAnimation
 from config import load_config
 from observer import FileSystemObserver
-from llm import generate_comment, generate_choices, process_interaction
+from llm import generate_comment, generate_choices, process_interaction, summarize_file
+from memory import update_memory, get_all_memories
 
 class FuwaApp(App):
     BINDINGS = [
@@ -127,13 +129,30 @@ class FuwaApp(App):
 
     @work(exclusive=True, thread=True)
     def trigger_heartbeat(self) -> None:
-        obs = self.observer.get_recent_observations()
+        events = self.observer.get_recent_events()
+        obs_str = self.observer.format_observations(events)
         personality = self.config.get("personality", "")
+
+        # Read and summarize modified files, storing in memory
+        for event in events:
+            if event["action"] in ("modified", "created"):
+                filepath = event["absolute_path"]
+                if os.path.isfile(filepath):
+                    try:
+                        with open(filepath, "r", encoding="utf-8") as f:
+                            # Read a small chunk to save LLM context
+                            content = f.read(5000)
+
+                        summary = summarize_file(event["filename"], content)
+                        update_memory(event["filename"], summary)
+                    except Exception as e:
+                        print(f"Error reading {filepath} for summary: {e}")
 
         # Disable buttons while generating
         self.call_from_thread(self.disable_buttons)
 
-        comment = generate_comment(obs, personality)
+        memories = get_all_memories()
+        comment = generate_comment(obs_str, personality, memories)
         comment = self.extract_and_set_mood(comment)
         self.call_from_thread(self.log_message, "Fuwa", comment)
 
