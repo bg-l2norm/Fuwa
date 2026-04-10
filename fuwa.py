@@ -2,13 +2,21 @@ from textual.app import App, ComposeResult
 from textual.containers import Container, Vertical, Horizontal
 from textual.widgets import Header, Footer, Static, Input, Button, Log, Label
 
+import re
+from textual import work
+
 from axolotl import AxolotlAnimation
 from config import load_config
-from textual import work
 from observer import FileSystemObserver
 from llm import generate_comment, generate_choices, process_interaction
 
 class FuwaApp(App):
+    BINDINGS = [
+        ("1", "select_choice(1)", "Choice 1"),
+        ("2", "select_choice(2)", "Choice 2"),
+        ("3", "select_choice(3)", "Choice 3"),
+    ]
+
     CSS = """
     Screen {
         background: $surface;
@@ -69,12 +77,14 @@ class FuwaApp(App):
                     yield Button("Loading choices...", id="btn_0", classes="choice_btn", disabled=True)
                     yield Button("...", id="btn_1", classes="choice_btn", disabled=True)
                     yield Button("...", id="btn_2", classes="choice_btn", disabled=True)
+                yield Input(placeholder="Say something to Fuwa...", id="user_input")
         yield Footer()
 
     def on_mount(self) -> None:
         self.axolotl_view = self.query_one("#axolotl_view", Static)
         self.chat_log_view = self.query_one("#chat_log", Log)
         self.choice_btns = [self.query_one(f"#btn_{i}", Button) for i in range(3)]
+        self.user_input = self.query_one("#user_input", Input)
 
         self.set_interval(0.5, self.update_animation)
         self.log_message("System", "Fuwa woke up!")
@@ -106,6 +116,15 @@ class FuwaApp(App):
                 btn.label = "..."
                 btn.disabled = True
 
+    def extract_and_set_mood(self, text: str) -> str:
+        """Extracts mood tag like [MOOD: HAPPY], sets the mood, and returns text without the tag."""
+        match = re.search(r"\[MOOD:\s*([A-Z]+)\]", text, re.IGNORECASE)
+        if match:
+            mood = match.group(1).upper()
+            self.anim.set_mood(mood)
+            text = re.sub(r"\[MOOD:\s*[A-Z]+\]\s*", "", text, flags=re.IGNORECASE).strip()
+        return text
+
     @work(exclusive=True, thread=True)
     def trigger_heartbeat(self) -> None:
         obs = self.observer.get_recent_observations()
@@ -115,6 +134,7 @@ class FuwaApp(App):
         self.call_from_thread(self.disable_buttons)
 
         comment = generate_comment(obs, personality)
+        comment = self.extract_and_set_mood(comment)
         self.call_from_thread(self.log_message, "Fuwa", comment)
 
         # Manually append the comment to context so the next LLM call has it immediately
@@ -130,10 +150,25 @@ class FuwaApp(App):
             btn.disabled = True
             btn.label = "Thinking..."
 
+    def action_select_choice(self, choice_num: int) -> None:
+        if 1 <= choice_num <= len(self.choice_btns):
+            btn = self.choice_btns[choice_num - 1]
+            if not btn.disabled and btn.label != "...":
+                user_choice = str(btn.label)
+                self.log_message("You", user_choice)
+                self.handle_user_choice(user_choice)
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         user_choice = str(event.button.label)
         self.log_message("You", user_choice)
         self.handle_user_choice(user_choice)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        user_choice = event.value.strip()
+        if user_choice:
+            self.user_input.value = ""
+            self.log_message("You", user_choice)
+            self.handle_user_choice(user_choice)
 
     @work(exclusive=True, thread=True)
     def handle_user_choice(self, user_choice: str) -> None:
@@ -142,6 +177,7 @@ class FuwaApp(App):
         context = "\n".join(self.chat_history[-5:])
 
         response = process_interaction(user_choice, context, personality)
+        response = self.extract_and_set_mood(response)
         self.call_from_thread(self.log_message, "Fuwa", response)
 
         # Generate new choices based on this new context, manually appending the new response so it has context

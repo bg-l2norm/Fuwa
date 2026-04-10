@@ -18,17 +18,67 @@ FRAME_2 = """[#ff69b4] ▄▀▄     ▄▀▄[/]
 [#ffb6c1]   ▀▄▄▄▄▄▀[/]
 """
 
-AXOLOTL_FRAMES = [FRAME_1, FRAME_2, FRAME_1, FRAME_2]
+FRAME_HAPPY_1 = """[#ff69b4] ▄▀▄     ▄▀▄[/]
+[#ff69b4] █ [#ffb6c1]▀▄▄▄▄▄▀[/] █[/]
+[#ff69b4]▀█[#ffb6c1] █ [#000000]^[/#000000] [#ffb6c1]▄[/#ffb6c1] [#000000]^[/#000000] █[/]█▀[/]
+[#ff69b4] ▀▄[#ffb6c1]▀▄▀▄▀▄▀[/]▄▀[/]
+[#ffb6c1]   ▀▄▄▄▄▄▀[/]
+"""
 
-def get_frame(index: int) -> str:
-    """Returns the frame at the given index."""
-    return AXOLOTL_FRAMES[index % len(AXOLOTL_FRAMES)]
+FRAME_HAPPY_2 = """[#ff69b4] ▄▀▄     ▄▀▄[/]
+[#ff69b4] █ [#ffb6c1]▀▄▄▄▄▄▀[/] █[/]
+[#ff69b4]▀█[#ffb6c1] █ [#000000]^[/#000000] [#ffb6c1]v[/#ffb6c1] [#000000]^[/#000000] █[/]█▀[/]
+[#ff69b4] ▀▄[#ffb6c1]▀▄▀▄▀▄▀[/]▄▀[/]
+[#ffb6c1]   ▀▄▄▄▄▄▀[/]
+"""
+
+FRAME_ANGRY_1 = """[#ff69b4] ▄▀▄     ▄▀▄[/]
+[#ff69b4] █ [#ffb6c1]▀▄▄▄▄▄▀[/] █[/]
+[#ff69b4]▀█[#ffb6c1] █ [#000000]>[/#000000] [#ffb6c1]▄[/#ffb6c1] [#000000]<[/#000000] █[/]█▀[/]
+[#ff69b4] ▀▄[#ffb6c1]▀▄▀▄▀▄▀[/]▄▀[/]
+[#ffb6c1]   ▀▄▄▄▄▄▀[/]
+"""
+
+FRAME_ANGRY_2 = """[#ff69b4] ▄▀▄     ▄▀▄[/]
+[#ff69b4] █ [#ffb6c1]▀▄▄▄▄▄▀[/] █[/]
+[#ff69b4]▀█[#ffb6c1] █ [#000000]>[/#000000] [#ffb6c1]O[/#ffb6c1] [#000000]<[/#000000] █[/]█▀[/]
+[#ff69b4] ▀▄[#ffb6c1]▀▄▀▄▀▄▀[/]▄▀[/]
+[#ffb6c1]   ▀▄▄▄▄▄▀[/]
+"""
+
+FRAME_SLEEPY_1 = """[#ff69b4] ▄▀▄     ▄▀▄[/]
+[#ff69b4] █ [#ffb6c1]▀▄▄▄▄▄▀[/] █[/]
+[#ff69b4]▀█[#ffb6c1] █ [#000000]-[/#000000] [#ffb6c1]▄[/#ffb6c1] [#000000]-[/#000000] █[/]█▀[/]
+[#ff69b4] ▀▄[#ffb6c1]▀▄▀▄▀▄▀[/]▄▀[/]
+[#ffb6c1]   ▀▄▄▄▄▄▀[/]
+"""
+
+FRAME_SLEEPY_2 = """[#ff69b4] ▄▀▄     ▄▀▄[/]
+[#ff69b4] █ [#ffb6c1]▀▄▄▄▄▄▀[/] █[/]
+[#ff69b4]▀█[#ffb6c1] █ [#000000]-[/#000000] [#ffb6c1].[/#ffb6c1] [#000000]-[/#000000] █[/]█▀[/]
+[#ff69b4] ▀▄[#ffb6c1]▀▄▀▄▀▄▀[/]▄▀[/]
+[#ffb6c1]   ▀▄▄▄▄▄▀[/]
+"""
+
+MOOD_FRAMES = {
+    "NORMAL": [FRAME_1, FRAME_2, FRAME_1, FRAME_2],
+    "HAPPY": [FRAME_HAPPY_1, FRAME_HAPPY_2, FRAME_HAPPY_1, FRAME_HAPPY_2],
+    "ANGRY": [FRAME_ANGRY_1, FRAME_ANGRY_2, FRAME_ANGRY_1, FRAME_ANGRY_2],
+    "SLEEPY": [FRAME_SLEEPY_1, FRAME_SLEEPY_2, FRAME_SLEEPY_1, FRAME_SLEEPY_2],
+}
 
 class AxolotlAnimation:
     def __init__(self):
         self.frame_index = 0
+        self.mood = "NORMAL"
+
+    def set_mood(self, mood: str) -> None:
+        mood = mood.upper()
+        if mood in MOOD_FRAMES:
+            self.mood = mood
 
     def next_frame(self) -> str:
-        frame = get_frame(self.frame_index)
+        frames = MOOD_FRAMES.get(self.mood, MOOD_FRAMES["NORMAL"])
+        frame = frames[self.frame_index % len(frames)]
         self.frame_index += 1
         return frame
