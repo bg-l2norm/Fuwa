@@ -45,14 +45,48 @@ class AxolotlAnimation:
 
         # Fallback if completely empty
         if not self.frames:
-            # Fallback to an animated colored square sequence
-            img1 = Image.new("RGB", (20, 20), color="red")
-            img2 = Image.new("RGB", (20, 20), color="blue")
-            img3 = Image.new("RGB", (20, 20), color="green")
+            from PIL import ImageDraw
+
+            def create_face(color, mouth, eye_offset=0, sleeping=False):
+                img = Image.new("RGB", (20, 20), color=color)
+                draw = ImageDraw.Draw(img)
+                # eyes
+                if sleeping:
+                    draw.rectangle([5, 6+eye_offset, 7, 6+eye_offset], fill="black")
+                    draw.rectangle([13, 6+eye_offset, 15, 6+eye_offset], fill="black")
+                else:
+                    draw.rectangle([5, 5+eye_offset, 7, 7+eye_offset], fill="black")
+                    draw.rectangle([13, 5+eye_offset, 15, 7+eye_offset], fill="black")
+                # mouth
+                if mouth == "smile":
+                    draw.rectangle([6, 12+eye_offset, 14, 13+eye_offset], fill="black")
+                    draw.rectangle([5, 11+eye_offset, 5, 12+eye_offset], fill="black")
+                    draw.rectangle([14, 11+eye_offset, 14, 12+eye_offset], fill="black")
+                elif mouth == "sad":
+                    draw.rectangle([6, 12+eye_offset, 14, 13+eye_offset], fill="black")
+                    draw.rectangle([5, 13+eye_offset, 5, 14+eye_offset], fill="black")
+                    draw.rectangle([14, 13+eye_offset, 14, 14+eye_offset], fill="black")
+                elif mouth == "straight":
+                    draw.rectangle([6, 12+eye_offset, 14, 13+eye_offset], fill="black")
+                elif mouth == "open":
+                    draw.rectangle([7, 11+eye_offset, 12, 14+eye_offset], fill="black")
+                return Pixels.from_image(img)
+
             self.frames["NORMAL"] = [
-                Pixels.from_image(img1),
-                Pixels.from_image(img2),
-                Pixels.from_image(img3)
+                create_face("pink", "straight", 0),
+                create_face("pink", "straight", 1)
+            ]
+            self.frames["HAPPY"] = [
+                create_face("lightgreen", "smile", 0),
+                create_face("lightgreen", "smile", 1)
+            ]
+            self.frames["ANGRY"] = [
+                create_face("red", "sad", 0),
+                create_face("red", "sad", 1)
+            ]
+            self.frames["SLEEPY"] = [
+                create_face("lightblue", "straight", 0, sleeping=True),
+                create_face("lightblue", "straight", 1, sleeping=True)
             ]
     def set_mood(self, mood: str) -> None:
         mood = mood.upper()

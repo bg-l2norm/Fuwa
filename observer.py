@@ -18,7 +18,15 @@ class ChangeHandler(FileSystemEventHandler):
         if ".git" in path_str or "__pycache__" in path_str:
             return
 
-        filename = Path(event.src_path).name
+        try:
+            # Resolve both to absolute before relativizing to handle '.' and './' properly
+            src_path_abs = Path(event.src_path).resolve()
+            cwd_abs = Path.cwd().resolve()
+            filename = str(src_path_abs.relative_to(cwd_abs))
+        except ValueError:
+            # If not relative to cwd, just use the full path or name, but let's try to use the full path
+            filename = str(event.src_path)
+
         action = event.event_type # 'created', 'modified', 'deleted', 'moved'
 
         # Keep things simple for the LLM
