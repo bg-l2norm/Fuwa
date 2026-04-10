@@ -7,7 +7,7 @@
 
 Fuwa is a minimalistic, rich TUI (Terminal User Interface) buddy powered by LLMs. It acts as an emotional, slightly demanding terminal companion (an axolotl!) that observes your high-level file activities and blurts out motivation, challenges, or fun comments.
 
-![Fuwa](assets/demo.svg)
+<img src="assets/demo.svg" alt="Fuwa" width="25%">
 
 ## Features
 
