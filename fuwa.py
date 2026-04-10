@@ -54,6 +54,9 @@ class FuwaApp(App):
         self.chat_history = []
         self.observer = FileSystemObserver(self.config.get("watch_folders", ["."]))
         self.heartbeat_timer = None
+        self.axolotl_view = None
+        self.chat_log_view = None
+        self.choice_btns = []
 
     def compose(self) -> ComposeResult:
         yield Header("Fuwa - Your Terminal Buddy")
@@ -69,6 +72,10 @@ class FuwaApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
+        self.axolotl_view = self.query_one("#axolotl_view", Static)
+        self.chat_log_view = self.query_one("#chat_log", Log)
+        self.choice_btns = [self.query_one(f"#btn_{i}", Button) for i in range(3)]
+
         self.set_interval(0.5, self.update_animation)
         self.log_message("System", "Fuwa woke up!")
         self.observer.start()
@@ -80,21 +87,18 @@ class FuwaApp(App):
         self.observer.stop()
 
     def update_animation(self) -> None:
-        view = self.query_one("#axolotl_view", Static)
-        view.update(self.anim.next_frame())
+        self.axolotl_view.update(self.anim.next_frame())
 
     def log_message(self, sender: str, message: str) -> None:
-        log_view = self.query_one("#chat_log", Log)
         formatted = f"[bold cyan]{sender}[/]: {message}"
-        log_view.write_line(formatted)
+        self.chat_log_view.write_line(formatted)
         self.chat_history.append(f"{sender}: {message}")
         # Keep history manageable
         if len(self.chat_history) > 20:
             self.chat_history.pop(0)
 
     def update_choices(self, choices: list[str]) -> None:
-        for i in range(3):
-            btn = self.query_one(f"#btn_{i}", Button)
+        for i, btn in enumerate(self.choice_btns):
             if i < len(choices):
                 btn.label = str(choices[i])
                 btn.disabled = False
@@ -122,8 +126,7 @@ class FuwaApp(App):
         self.call_from_thread(self.update_choices, choices)
 
     def disable_buttons(self) -> None:
-        for i in range(3):
-            btn = self.query_one(f"#btn_{i}", Button)
+        for btn in self.choice_btns:
             btn.disabled = True
             btn.label = "Thinking..."
 
