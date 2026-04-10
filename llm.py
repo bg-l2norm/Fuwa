@@ -26,8 +26,36 @@ def _get_api_kwargs():
 
     return kwargs
 
-def generate_comment(observations: str, personality: str) -> str:
-    """Generates a blurt from the axolotl based on recent observations."""
+def summarize_file(filename: str, content: str) -> str:
+    """Generates a high-level summary of a file's contents to capture intent/emotion."""
+    kwargs = _get_api_kwargs()
+
+    system_prompt = (
+        "You are an AI assistant that summarizes codebase files to capture the user's "
+        "high-level intent and emotional state. You don't care about specific code syntax "
+        "or minor details. Just give a brief (1-3 sentences) description of what the file "
+        "is about, and what the user is likely trying to achieve. Keep it very short."
+    )
+
+    user_message = f"File: {filename}\nContent:\n```\n{content}\n```"
+
+    try:
+        response = litellm.completion(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ],
+            max_tokens=100,
+            **kwargs
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"Error summarizing file: {e}")
+        return "Failed to summarize file."
+
+
+def generate_comment(observations: str, personality: str, file_memories: str = "") -> str:
+    """Generates a blurt from the axolotl based on recent observations and memories."""
     kwargs = _get_api_kwargs()
 
     available_moods = AxolotlAnimation.get_available_moods()
@@ -44,7 +72,9 @@ def generate_comment(observations: str, personality: str) -> str:
         "Output ONLY the raw text response."
     )
 
-    user_message = f"Here are the recent file events:\n```\n{observations}\n```"
+    user_message = f"Here are the recent file events:\n```\n{observations}\n```\n\n"
+    if file_memories:
+        user_message += f"Here are summaries of some of the files for context:\n```\n{file_memories}\n```"
 
     try:
         response = litellm.completion(
