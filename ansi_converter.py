@@ -13,12 +13,53 @@ def convert_image_to_ansi(image_path, target_width=40):
         print(f"Error opening image {image_path}: {e}")
         return ""
 
+    # --- Background Removal & Cropping ---
+    width, height = img.size
+    pixels = img.load()
+    visited = set()
+    queue = []
+
+    for x in range(width):
+        queue.extend([(x, 0), (x, height - 1)])
+    for y in range(height):
+        queue.extend([(0, y), (width - 1, y)])
+
+    valid_queue = []
+    for (x, y) in queue:
+        r, g, b, a = pixels[x, y]
+        if r > 240 and g > 240 and b > 240:
+            valid_queue.append((x, y))
+            visited.add((x, y))
+
+    while valid_queue:
+        x, y = valid_queue.pop(0)
+        r, g, b, a = pixels[x, y]
+        pixels[x, y] = (r, g, b, 0)
+
+        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < width and 0 <= ny < height:
+                if (nx, ny) not in visited:
+                    visited.add((nx, ny))
+                    nr, ng, nb, na = pixels[nx, ny]
+                    if nr > 240 and ng > 240 and nb > 240:
+                        valid_queue.append((nx, ny))
+
+    bbox = img.getbbox()
+    if bbox:
+        img = img.crop(bbox)
+    # --- End Background Removal ---
+
     width, height = img.size
 
+    target_height = height
     if target_width:
         aspect_ratio = height / width
         width = target_width
-        height = int(width * aspect_ratio)
+        target_height = int(width * aspect_ratio)
+
+    if target_height % 2 != 0:
+        target_height += 1
 
     # 1. Spread opaque pixel RGB values into neighboring transparent pixels
     # via iterative dilation (3 iterations)
@@ -59,10 +100,6 @@ def convert_image_to_ansi(image_path, target_width=40):
     # 2. Resize the RGB and alpha channels as separate images to bypass premultiply
     rgb_img = dilated_img.convert("RGB")
     alpha_img = dilated_img.split()[3]
-
-    target_height = height
-    if target_height % 2 != 0:
-        target_height += 1
 
     rgb_resized = rgb_img.resize((width, target_height), Image.Resampling.LANCZOS)
     alpha_resized = alpha_img.resize((width, target_height), Image.Resampling.LANCZOS)
@@ -110,7 +147,7 @@ def convert_and_save_script(image_path, sh_path, target_width=40):
 
     with open(sh_path, "w", encoding="utf-8") as f:
         f.write("#!/bin/bash\n")
-        f.write(f"echo \"{base64_encoded}\" | base64 -d\n")
+        f.write(f"echo \"{base64_encoded}\" | base64 --decode\n")
 
     os.chmod(sh_path, 0o755)
     return True
