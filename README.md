@@ -9,13 +9,7 @@ Fuwa is a minimalistic, rich TUI (Terminal User Interface) buddy powered by LLMs
 
 ![Fuwa](https://raw.githubusercontent.com/jules-ai/fuwa-assets/main/demo.png)
 
-```
- ▄▀▄     ▄▀▄
- █ ▀▄▄▄▄▄▀ █
-▀█ █ ▄ ▄ ▄ █ █▀
- ▀▄▀▄▀▄▀▄▀▄▀
-   ▀▄▄▄▄▄▀
-```
+![Axolotl](assets/normal_1.png)
 
 ## Features
 

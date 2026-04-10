@@ -13,7 +13,16 @@ class AxolotlAnimation:
 
     def _load_assets(self):
         assets_dir = "assets"
-        moods = ["normal", "happy", "angry", "sleepy"]
+
+        moods = set()
+        if os.path.exists(assets_dir):
+            for filename in os.listdir(assets_dir):
+                if filename.endswith("_1.png"):
+                    moods.add(filename.split("_")[0])
+
+        if not moods:
+            moods = {"normal"} # Fallback
+
         for mood in moods:
             mood_upper = mood.upper()
             self.frames[mood_upper] = []
@@ -53,11 +62,21 @@ class AxolotlAnimation:
     def set_mood(self, mood: str) -> None:
         mood = mood.upper()
         if mood in self.frames and self.frames[mood]:
-            self.mood = mood
+            if self.mood != mood:
+                self.mood = mood
+                self.frame_index = 0
 
     def next_frame(self):
         # We can return either str (fallback) or Pixels object
-        frames = self.frames.get(self.mood, self.frames.get("NORMAL", []))
+        frames = self.frames.get(self.mood)
+
+        if not frames:
+            # Fallback to NORMAL, or just the first available mood
+            frames = self.frames.get("NORMAL")
+            if not frames and self.frames:
+                first_mood = next(iter(self.frames))
+                frames = self.frames[first_mood]
+
         if not frames:
             # Fallback empty string if everything fails
             return ""
