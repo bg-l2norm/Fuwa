@@ -39,8 +39,8 @@ def test_config_defaults():
 def test_generate_comment_error_path(mocker):
     from llm import generate_comment
 
-    # Mock litellm.completion to raise an exception
-    mocker.patch('llm.litellm.completion', side_effect=Exception("Test error"))
+    # Mock simple_completion to raise an exception
+    mocker.patch('llm.simple_completion', side_effect=Exception("Test error"))
 
     # Call generate_comment with dummy arguments
     result = generate_comment("test observation", "test personality", "test memory")
