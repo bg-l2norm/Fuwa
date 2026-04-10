@@ -2,6 +2,7 @@ import json
 import litellm
 import os
 from config import load_config
+from axolotl import AxolotlAnimation
 
 def _get_api_kwargs():
     config = load_config()
@@ -29,14 +30,17 @@ def generate_comment(observations: str, personality: str) -> str:
     """Generates a blurt from the axolotl based on recent observations."""
     kwargs = _get_api_kwargs()
 
+    available_moods = AxolotlAnimation.get_available_moods()
+    moods_str = ", ".join(f"[MOOD: {m}]" for m in available_moods)
+
     system_prompt = (
         f"{personality}\n\n"
         "You are observing the user's workspace.\n"
         "Give a short, rich, emotional response (1-2 sentences). "
         "If they are procrastinating (no recent activity), make them feel guilty or challenge them! "
         "If they are working hard (many file modifications/creations), praise them or be sarcastic about their 'dedication'. "
-        "Include a mood tag at the VERY BEGINNING of your response. Valid tags: [MOOD: NORMAL], [MOOD: HAPPY], [MOOD: ANGRY], [MOOD: SLEEPY]. "
-        "For example: '[MOOD: HAPPY] Wow, you are working so hard!' "
+        f"Include a mood tag at the VERY BEGINNING of your response. Valid tags: {moods_str}. "
+        f"For example: '{moods_str.split(', ')[0]} Wow, you are working so hard!' "
         "Output ONLY the raw text response."
     )
 
@@ -104,12 +108,15 @@ def process_interaction(interaction: str, recent_context: str, personality: str)
     kwargs = _get_api_kwargs()
     from config import update_config
 
+    available_moods = AxolotlAnimation.get_available_moods()
+    moods_str = ", ".join(f"[MOOD: {m}]" for m in available_moods)
+
     system_prompt = (
         f"{personality}\n\n"
         "Respond in character to the user's action/dialogue. Be emotional, reactive. If they chose to slack off, amplify the guilt! "
         "If they chose to work, act satisfied but demanding. Short response (1-2 sentences). "
-        "Include a mood tag at the VERY BEGINNING of your response. Valid tags: [MOOD: NORMAL], [MOOD: HAPPY], [MOOD: ANGRY], [MOOD: SLEEPY]. "
-        "For example: '[MOOD: ANGRY] Do not ignore me!' "
+        f"Include a mood tag at the VERY BEGINNING of your response. Valid tags: {moods_str}. "
+        f"For example: '{moods_str.split(', ')[-1] if ',' in moods_str else moods_str.split(', ')[0]} Do not ignore me!' "
         "Output ONLY the text."
     )
 

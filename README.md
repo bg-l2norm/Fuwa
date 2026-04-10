@@ -71,6 +71,20 @@ To avoid dependency conflicts with other projects on your system (dependency hel
    ```
 </details>
 
+## Customizing Sprites / Buddies
+
+You can easily replace the default axolotl with your own buddy!
+
+1. Create pixel art or images for different "moods".
+2. Name the files using the format `<mood>_<frame_num>.png`. For example:
+   - `normal_1.png`, `normal_2.png`
+   - `excited_1.png`, `excited_2.png`
+   - `sleeping_1.png`, `sleeping_2.png`
+3. Drop these images into the `assets/` directory (replacing the existing ones).
+4. Start Fuwa!
+
+Fuwa will automatically scan the `assets/` directory, extract the moods (e.g., `NORMAL`, `EXCITED`, `SLEEPING`), and animate the frames in order. It also communicates these custom moods to the LLM so it knows exactly how to express itself using your new buddy's emotions!
+
 ## Configuration
 
 On first run, Fuwa generates a `config.json` file in the root directory. You must configure it with your desired LLM provider and API key.
