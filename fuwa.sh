@@ -34,17 +34,11 @@ check_python_version() {
     fi
 }
 
-do_install() {
-    echo "🌸 Starting Fuwa Installation..."
+ensure_bootstrap() {
     PYTHON_CMD=$(get_python)
     if [ $? -ne 0 ]; then return 1; fi
     check_python_version "$PYTHON_CMD"
     if [ $? -ne 0 ]; then return 1; fi
-
-    if [ ! -f "requirements.txt" ]; then
-        echo "❌ Error: requirements.txt not found."
-        return 1
-    fi
 
     if [ ! -f "venv/bin/activate" ]; then
         if [ -e "venv" ]; then
@@ -57,142 +51,20 @@ do_install() {
             echo "   (On Debian/Ubuntu, you may need: sudo apt install python3-venv)"
             return 1
         fi
-    else
-        echo "✅ Virtual environment already exists."
     fi
 
-    echo "🔄 Activating virtual environment..."
-    source venv/bin/activate || { echo "❌ Error: Failed to activate virtual environment."; return 1; }
-
-    echo "⬇️ Installing dependencies..."
-    if ! pip install -r requirements.txt; then
-        echo "❌ Error: Failed to install dependencies."
-        return 1
+    # Ensure rich is installed so the installer UI can run
+    if ! venv/bin/python -c "import rich" >/dev/null 2>&1; then
+        echo "📦 Bootstrapping installer dependencies..."
+        venv/bin/pip install rich >/dev/null 2>&1 || { echo "❌ Error: Failed to bootstrap installer."; return 1; }
     fi
-
-    touch venv/.fuwa_installed
-
-    echo "✅ Fuwa Installation Complete! Run './fuwa.sh run' to start."
-}
-
-do_update() {
-    echo "🌸 Updating Fuwa..."
-    if [ -d ".git" ]; then
-        echo "⬇️ Pulling latest changes from git..."
-        # Use git fetch and merge to avoid pulling issues
-        git fetch origin main || true
-        git merge FETCH_HEAD || { echo "❌ Error: git merge failed. Please resolve conflicts manually."; exit 1; }
-    fi
-
-    if [ ! -f "requirements.txt" ]; then
-        echo "❌ Error: requirements.txt not found."
-        return 1
-    fi
-
-    if [ -f "venv/bin/activate" ] && [ -f "venv/.fuwa_installed" ]; then
-        source venv/bin/activate || { echo "❌ Error: Failed to activate virtual environment."; return 1; }
-        echo "⬇️ Updating dependencies..."
-        if ! pip install -r requirements.txt; then
-            echo "❌ Error: Failed to update dependencies."
-            return 1
-        fi
-        echo "✅ Fuwa updated successfully!"
-    else
-        echo "⚠️ Virtual environment not found or incomplete. Please run './fuwa.sh install' first."
-        return 1
-    fi
-}
-
-do_doctor() {
-    echo "🩺 Starting Fuwa Doctor..."
-    set +e # Don't exit on error for doctor
-    ISSUES_FOUND=0
-    ISSUES_FIXED=0
-
-    PYTHON_CMD=$(get_python)
-    if [ $? -ne 0 ]; then
-        return 1
-    fi
-    check_python_version "$PYTHON_CMD"
-    if [ $? -ne 0 ]; then
-        return 1
-    fi
-    echo "✅ Python check passed."
-
-    if [ ! -f "venv/bin/activate" ]; then
-        echo "⚠️ Issue: Valid virtual environment 'venv' not found."
-        ISSUES_FOUND=$((ISSUES_FOUND+1))
-        if [ -e "venv" ]; then
-            echo "🔧 Fixing: Removing invalid 'venv'..."
-            rm -rf venv
-        fi
-        echo "🔧 Fixing: Creating virtual environment..."
-        if $PYTHON_CMD -m venv venv; then
-            echo "✅ Fixed: Virtual environment created."
-            ISSUES_FIXED=$((ISSUES_FIXED+1))
-        else
-            echo "❌ Error: Failed to create virtual environment."
-        fi
-    else
-        echo "✅ Virtual environment check passed."
-    fi
-
-    if [ -f "venv/bin/activate" ]; then
-        source venv/bin/activate
-        if ! python -c "import textual, litellm, watchdog" 2>/dev/null || [ ! -f "venv/.fuwa_installed" ]; then
-            echo "⚠️ Issue: Missing dependencies or incomplete installation."
-            ISSUES_FOUND=$((ISSUES_FOUND+1))
-            echo "🔧 Fixing: Installing dependencies..."
-            if [ -f "requirements.txt" ] && pip install -r requirements.txt >/dev/null 2>&1; then
-                touch venv/.fuwa_installed
-                echo "✅ Fixed: Dependencies installed."
-                ISSUES_FIXED=$((ISSUES_FIXED+1))
-            else
-                echo "❌ Error: Failed to install dependencies."
-            fi
-        else
-            echo "✅ Dependencies check passed."
-        fi
-    else
-        echo "❌ Error: Could not find venv/bin/activate"
-    fi
-
-    if [ ! -f "config.json" ]; then
-        echo "⚠️ Issue: config.json not found."
-        ISSUES_FOUND=$((ISSUES_FOUND+1))
-        echo "🔧 Fixing: Generating config.json..."
-        if python -c "import config; config.load_config()" >/dev/null 2>&1; then
-            echo "✅ Fixed: config.json generated."
-            ISSUES_FIXED=$((ISSUES_FIXED+1))
-        else
-            echo "❌ Error: Failed to generate config.json."
-        fi
-    fi
-
-    if [ -f "config.json" ]; then
-        if grep -q '"api_key": "YOUR_API_KEY_HERE"' config.json; then
-            echo "⚠️ Warning: config.json still has default API key."
-            echo "   Please edit config.json and set a real API key."
-            ISSUES_FOUND=$((ISSUES_FOUND+1))
-        else
-            echo "✅ config.json check passed."
-        fi
-    fi
-
-    echo ""
-    echo "🩺 Doctor summary: Found $ISSUES_FOUND issues, fixed $ISSUES_FIXED issues."
-    if [ $ISSUES_FOUND -gt $ISSUES_FIXED ]; then
-        echo "⚠️ Some issues require manual intervention."
-    else
-        echo "🌸 Your Fuwa installation looks healthy!"
-    fi
-    set -e
 }
 
 do_run() {
     if [ ! -f "venv/bin/activate" ] || [ ! -f "venv/.fuwa_installed" ]; then
         echo "⚠️ Virtual environment not found or incomplete. Running install first..."
-        do_install
+        ensure_bootstrap || return 1
+        venv/bin/python installer.py install
         # If install fails, don't try to run
         if [ $? -ne 0 ]; then
             return 1
@@ -212,13 +84,16 @@ COMMAND=${1:-run}
 
 case "$COMMAND" in
     install)
-        do_install
+        ensure_bootstrap || exit 1
+        venv/bin/python installer.py install
         ;;
     update)
-        do_update
+        ensure_bootstrap || exit 1
+        venv/bin/python installer.py update
         ;;
     doctor)
-        do_doctor
+        ensure_bootstrap || exit 1
+        venv/bin/python installer.py doctor
         ;;
     run)
         do_run
