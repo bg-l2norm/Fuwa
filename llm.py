@@ -27,7 +27,6 @@ def _get_api_kwargs():
 
 def generate_comment(observations: str, personality: str) -> str:
     """Generates a blurt from the axolotl based on recent observations."""
-    config = load_config()
     kwargs = _get_api_kwargs()
 
     system_prompt = (
@@ -52,7 +51,6 @@ def generate_comment(observations: str, personality: str) -> str:
 
 def generate_choices(recent_context: str, personality: str) -> list[str]:
     """Generates 3 interactive text-RPG style choices for the user to respond to the blurt."""
-    config = load_config()
     kwargs = _get_api_kwargs()
 
     system_prompt = (
@@ -93,7 +91,6 @@ def generate_choices(recent_context: str, personality: str) -> list[str]:
 
 def process_interaction(interaction: str, recent_context: str, personality: str) -> str:
     """Processes user interaction and generates axolotl's response, potentially updating personality."""
-    config = load_config()
     kwargs = _get_api_kwargs()
     from config import update_config
 
