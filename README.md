@@ -20,9 +20,9 @@ Fuwa is a minimalistic, rich TUI (Terminal User Interface) buddy powered by LLMs
 | ✨ **Rich TUI** | A sleek, minimal Textual interface featuring a cute pixel-art style animated Axolotl. |
 | 🧠 **LLM Powered** | Uses `litellm` under the hood, allowing you to use OpenAI, Anthropic, OpenRouter, or any other supported provider. |
 
-## Automated Scripts (Recommended)
+## Quick Start
 
-For a simple and automated experience, use the provided `fuwa.sh` script.
+For a simple and automated experience, use the provided `fuwa.sh` script. It handles installing dependencies into an isolated virtual environment and running the app for you!
 
 ```bash
 # Install Fuwa (creates isolated venv and installs dependencies)
@@ -41,7 +41,10 @@ For a simple and automated experience, use the provided `fuwa.sh` script.
 ./fuwa.sh doctor
 ```
 
-## Manual Installation
+Fuwa will wake up, start observing your files, and interact with you!
+
+<details>
+<summary><b>Manual Installation and Running</b></summary>
 
 To avoid dependency conflicts with other projects on your system (dependency hell), it is highly recommended to install Fuwa inside an isolated virtual environment.
 
@@ -61,6 +64,12 @@ To avoid dependency conflicts with other projects on your system (dependency hel
    ```bash
    pip install -r requirements.txt
    ```
+4. Run the main application manually:
+   ```bash
+   source venv/bin/activate
+   python fuwa.py
+   ```
+</details>
 
 ## Configuration
 
@@ -81,20 +90,6 @@ On first run, Fuwa generates a `config.json` file in the root directory. You mus
 - **`watch_folders`**: An array of absolute or relative paths to directories you want Fuwa to observe.
 - **`provider`**: E.g., `openai`, `anthropic`, `openrouter`.
 - **`model`**: E.g., `gpt-4o-mini`, `claude-3-haiku-20240307`, `openrouter/auto`.
-
-## Running Fuwa
-
-Run the main application (the automated script handles activating the environment for you):
-```bash
-./fuwa.sh run
-```
-Or manually:
-```bash
-source venv/bin/activate
-python fuwa.py
-```
-
-Fuwa will wake up, start observing your files, and interact with you!
 
 ## Testing
 
