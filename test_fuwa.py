@@ -1,5 +1,5 @@
 import pytest
-from textual.widgets import Button, Log
+from textual.widgets import Button, RichLog
 from fuwa import FuwaApp
 
 @pytest.mark.asyncio
@@ -15,8 +15,8 @@ async def test_fuwa_app_startup():
 
         # Test chat log appending
         app.log_message("Test", "Hello World")
-        log_view = app.query_one("#chat_log", Log)
-        assert "Hello World" in log_view.lines[-1]
+        log_view = app.query_one("#chat_log", RichLog)
+        assert "Hello World" in "\n".join([line.text for line in log_view.lines])
 
         # Test choice updating
         app.update_choices(["A", "B"])

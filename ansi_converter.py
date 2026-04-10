@@ -2,18 +2,13 @@ import os
 import base64
 from PIL import Image, ImageEnhance
 
-def convert_image_to_ansi(image_path, target_width=40):
-    """
-    Converts a PNG image to ANSI escape codes using the half-block truecolor technique.
-    Applies dilation to edges, resizes channels separately, and boosts saturation.
-    """
+def get_content_bounds(image_path):
     try:
         img = Image.open(image_path).convert("RGBA")
     except Exception as e:
         print(f"Error opening image {image_path}: {e}")
-        return ""
+        return None
 
-    # --- Background Removal & Cropping ---
     width, height = img.size
     pixels = img.load()
     visited = set()
@@ -59,8 +54,72 @@ def convert_image_to_ansi(image_path, target_width=40):
                 if y > max_y: max_y = y
 
     if min_x <= max_x and min_y <= max_y:
-        img = img.crop((min_x, min_y, max_x + 1, max_y + 1))
-    # --- End Background Removal ---
+        return (min_x, min_y, max_x + 1, max_y + 1)
+    return None
+
+def convert_image_to_ansi(image_path, target_width=40, crop_box=None):
+
+    """
+    Converts a PNG image to ANSI escape codes using the half-block truecolor technique.
+    Applies dilation to edges, resizes channels separately, and boosts saturation.
+    """
+    try:
+        img = Image.open(image_path).convert("RGBA")
+    except Exception as e:
+        print(f"Error opening image {image_path}: {e}")
+        return ""
+
+    # Background removal
+    width, height = img.size
+    pixels = img.load()
+    visited = set()
+    queue = []
+
+    for x in range(width):
+        queue.extend([(x, 0), (x, height - 1)])
+    for y in range(height):
+        queue.extend([(0, y), (width - 1, y)])
+
+    valid_queue = []
+    for (x, y) in queue:
+        r, g, b, a = pixels[x, y]
+        if a == 0 or ((255 - r)**2 + (255 - g)**2 + (255 - b)**2 < 1000):
+            valid_queue.append((x, y))
+            visited.add((x, y))
+
+    while valid_queue:
+        x, y = valid_queue.pop(0)
+        r, g, b, a = pixels[x, y]
+        pixels[x, y] = (r, g, b, 0)
+
+        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < width and 0 <= ny < height:
+                if (nx, ny) not in visited:
+                    visited.add((nx, ny))
+                    nr, ng, nb, na = pixels[nx, ny]
+                    if na == 0 or ((255 - nr)**2 + (255 - ng)**2 + (255 - nb)**2 < 1000):
+                        valid_queue.append((nx, ny))
+
+    # Apply crop box
+    if crop_box:
+        img = img.crop(crop_box)
+    else:
+        min_x = width
+        min_y = height
+        max_x = 0
+        max_y = 0
+        for y in range(height):
+            for x in range(width):
+                _, _, _, a = pixels[x, y]
+                if a > 0:
+                    if x < min_x: min_x = x
+                    if y < min_y: min_y = y
+                    if x > max_x: max_x = x
+                    if y > max_y: max_y = y
+
+        if min_x <= max_x and min_y <= max_y:
+            img = img.crop((min_x, min_y, max_x + 1, max_y + 1))
 
     orig_width, orig_height = img.size
 
@@ -153,8 +212,8 @@ def convert_image_to_ansi(image_path, target_width=40):
 
     return "\n".join(ansi_lines)
 
-def convert_and_save_script(image_path, sh_path, target_width=40):
-    ansi_str = convert_image_to_ansi(image_path, target_width=target_width)
+def convert_and_save_script(image_path, sh_path, target_width=40, crop_box=None):
+    ansi_str = convert_image_to_ansi(image_path, target_width=target_width, crop_box=crop_box)
     if not ansi_str:
         return False
 
