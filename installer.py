@@ -100,7 +100,7 @@ def do_doctor():
     console.print("✅ Python check passed.")
 
     console.print("\n[cyan]Checking Virtual Environment...[/cyan]")
-    if not (os.path.exists("venv/bin/activate") and os.path.exists("venv/.fuwa_installed")):
+    if not os.path.exists("venv/bin/activate"):
         console.print("[bold yellow]⚠️ Issue: Valid virtual environment 'venv' not found.[/bold yellow]")
         issues_found += 1
 
@@ -123,7 +123,7 @@ def do_doctor():
         try:
             # We don't want to use subprocess run to import since textual might fail if missing.
             # However, we can just run a python script inside the venv to check imports
-            check_script = "import textual, litellm, watchdog"
+            check_script = "import textual, rich, watchdog, litellm, dotenv, PIL, rich_pixels"
             process = subprocess.run(f"source venv/bin/activate && python -c '{check_script}'", shell=True, executable='/bin/bash', capture_output=True)
 
             if process.returncode != 0 or not os.path.exists("venv/.fuwa_installed"):
