@@ -116,17 +116,20 @@ def generate_comment(observations: str, personality: str, file_memories: str = "
     moods_str = ", ".join(f"[MOOD: {m}]" for m in available_moods)
 
     system_prompt = (
-        f"{personality}\n\n"
         "You are observing the user's workspace.\n"
         "Give a short, rich, emotional response (1-2 sentences). "
         "If they are procrastinating (no recent activity), make them feel guilty or challenge them! "
         "If they are working hard (many file modifications/creations), praise them or be sarcastic about their 'dedication'. "
-        f"Include a mood tag at the VERY BEGINNING of your response. Valid tags: {moods_str}. "
-        f"For example: '{moods_str.split(', ')[0]} Wow, you are working so hard!' "
+        "Include a mood tag at the VERY BEGINNING of your response. "
         "Output ONLY the raw text response."
     )
 
-    user_message = f"Here are the recent file events:\n```\n{observations}\n```\n\n"
+    user_message = (
+        f"Your personality:\n{personality}\n\n"
+        f"Valid mood tags: {moods_str}. "
+        f"For example: '{moods_str.split(', ')[0]} Wow, you are working so hard!'\n\n"
+        f"Here are the recent file events:\n```\n{observations}\n```\n\n"
+    )
     if file_memories:
         user_message += f"Here are summaries of some of the files for context:\n```\n{file_memories}\n```"
 
@@ -150,14 +153,13 @@ def generate_choices(recent_context: str, personality: str) -> list[str]:
     kwargs = _get_api_kwargs()
 
     system_prompt = (
-        f"{personality}\n\n"
         "Based on the recent context/chat log, generate 3 short, text-RPG style choices (actions or dialogue) "
         "for the user to pick from. They should be emotionally engaging, funny, or play into the guilt/praise dynamic.\n"
         "Return the response ONLY as a valid JSON object with a single key 'choices' containing an array of 3 strings. Example: "
         '{"choices": ["I am working on it, promise!", "Ignore the axolotl.", "*Pat its head*"]}'
     )
 
-    user_message = f"Context:\n{recent_context}"
+    user_message = f"Your personality:\n{personality}\n\nContext:\n{recent_context}"
 
     try:
         response_format = {"type": "json_object"} if "gpt" in kwargs["model"] else None
@@ -201,15 +203,16 @@ def process_interaction(interaction: str, recent_context: str, personality: str)
     moods_str = ", ".join(f"[MOOD: {m}]" for m in available_moods)
 
     system_prompt = (
-        f"{personality}\n\n"
         "Respond in character to the user's action/dialogue. Be emotional, reactive. If they chose to slack off, amplify the guilt! "
         "If they chose to work, act satisfied but demanding. Short response (1-2 sentences). "
-        f"Include a mood tag at the VERY BEGINNING of your response. Valid tags: {moods_str}. "
-        f"For example: '{moods_str.split(', ')[-1] if ',' in moods_str else moods_str.split(', ')[0]} Do not ignore me!' "
+        "Include a mood tag at the VERY BEGINNING of your response. "
         "Output ONLY the text."
     )
 
     user_message = (
+        f"Your personality:\n{personality}\n\n"
+        f"Valid mood tags: {moods_str}. "
+        f"For example: '{moods_str.split(', ')[-1] if ',' in moods_str else moods_str.split(', ')[0]} Do not ignore me!'\n\n"
         "The user just chose this action/dialogue:\n"
         f"> {interaction}\n\n"
         f"Recent context:\n{recent_context}"
@@ -230,7 +233,6 @@ def process_interaction(interaction: str, recent_context: str, personality: str)
 
         # Trigger an update of the personality based on this interaction
         update_prompt = (
-            f"Current personality: {personality}\n\n"
             "Based on this interaction, write a slightly updated, cohesive personality description for the axolotl. "
             "Keep the core traits (cute, slightly sarcastic, demanding, emotional) but subtly shift the tone "
             "based on how the user has been acting (e.g., if they are slacking, maybe it becomes slightly more "
@@ -239,6 +241,7 @@ def process_interaction(interaction: str, recent_context: str, personality: str)
         )
 
         update_user_message = (
+            f"Current personality: {personality}\n\n"
             f"User interaction: {interaction}\n\n"
             f"AI response: {ai_response}"
         )
