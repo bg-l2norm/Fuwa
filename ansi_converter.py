@@ -162,6 +162,8 @@ def convert_image_to_ansi(image_path, target_width=40, crop_box=None):
 
     return "\n".join(ansi_lines)
 
+import hashlib
+
 def convert_and_save_script(image_path, sh_path, target_width=40, crop_box=None):
     ansi_str = convert_image_to_ansi(image_path, target_width=target_width, crop_box=crop_box)
     if not ansi_str:
@@ -171,8 +173,12 @@ def convert_and_save_script(image_path, sh_path, target_width=40, crop_box=None)
 
     os.makedirs(os.path.dirname(sh_path), exist_ok=True)
 
+    with open(image_path, 'rb') as img_f:
+        file_hash = hashlib.md5(img_f.read()).hexdigest()
+
     with open(sh_path, "w", encoding="utf-8") as f:
         f.write("#!/bin/bash\n")
+        f.write(f"# md5: {file_hash}\n")
         f.write(f"echo \"{base64_encoded}\" | base64 --decode\n")
 
     os.chmod(sh_path, 0o755)
