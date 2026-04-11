@@ -119,10 +119,16 @@ def do_first_run_setup():
             else:
                 break
 
+        watch_folders_str = Prompt.ask("Enter comma-separated directories to observe (default: .)", default=".")
+        watch_folders = [f.strip() for f in watch_folders_str.split(",") if f.strip()]
+        if not watch_folders:
+            watch_folders = ["."]
+
         config_data = DEFAULT_CONFIG.copy()
         config_data["provider"] = provider
         config_data["model"] = model
         config_data["api_key"] = api_key
+        config_data["watch_folders"] = watch_folders
 
         import json
         flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
@@ -133,6 +139,66 @@ def do_first_run_setup():
         os.chmod(CONFIG_FILE, 0o600)  # Ensure permissions are set correctly
 
         console.print("\n[bold green]✅ Setup complete![/bold green]\n")
+
+        # Walk directories and generate first-pass summaries
+        console.print("[bold cyan]Scanning directories to understand your project...[/bold cyan]")
+
+        ignored_patterns = [
+            ".git", "__pycache__", "node_modules", "venv", ".venv",
+            "build", "dist", "target", ".idea", ".vscode", "memory.json", "config.json"
+        ]
+
+        def should_ignore(path_str):
+            return any(f"/{pat}/" in path_str or path_str.endswith(f"/{pat}") or path_str.startswith(f"{pat}/") or path_str == pat for pat in ignored_patterns)
+
+        with Progress(
+            SpinnerColumn(spinner_name="dots"),
+            TextColumn("[bold cyan]Reading files and generating summaries...[/bold cyan]"),
+            transient=True
+        ) as progress:
+            task = progress.add_task("scanning", total=None)
+
+            # Temporary override of api key in env if needed for summarize_file
+            os.environ["FUWA_API_KEY"] = api_key
+
+            for folder in watch_folders:
+                folder_path = os.path.abspath(folder)
+                if not os.path.isdir(folder_path):
+                    continue
+
+                for root, dirs, files in os.walk(folder_path):
+                    # Filter directories in-place
+                    dirs[:] = [d for d in dirs if not should_ignore(os.path.join(root, d))]
+
+                    for file in files:
+                        filepath = os.path.join(root, file)
+                        if should_ignore(filepath):
+                            continue
+
+                        try:
+                            # Use relative path if possible for the memory key
+                            rel_path = os.path.relpath(filepath, os.getcwd())
+                        except ValueError:
+                            rel_path = filepath
+
+                        # Quick check to not read huge binaries
+                        if os.path.getsize(filepath) > 1024 * 1024: # Skip > 1MB
+                            continue
+
+                        try:
+                            with open(filepath, "r", encoding="utf-8") as f:
+                                content = f.read(5000) # Only read first 5000 chars
+                            if content.strip():
+                                summary = summarize_file(rel_path, content)
+                                update_memory(rel_path, summary)
+                        except UnicodeDecodeError:
+                            # Binary file likely
+                            pass
+                        except Exception as e:
+                            pass
+
+            if "FUWA_API_KEY" in os.environ:
+                del os.environ["FUWA_API_KEY"]
 
         # Loading animation
         with Progress(
@@ -420,10 +486,9 @@ class FuwaApp(App):
         # Set initial deterministic choices
         self.update_choices(["*Stare blankly*", "*Go back to work*", "*Poke axolotl*"])
 
-        rpm = self.config.get("requests_per_min", 0)
-        if rpm > 0:
-            interval = 60.0 / rpm
-            self.heartbeat_timer = self.set_interval(interval, self.trigger_heartbeat)
+        # Fast interval for observing changes, only makes API call when changes happen
+        interval = 5.0
+        self.heartbeat_timer = self.set_interval(interval, self.trigger_heartbeat)
 
         self.trigger_heartbeat() # Initial trigger
 
@@ -504,6 +569,11 @@ class FuwaApp(App):
     @work(exclusive=True, thread=True)
     def trigger_heartbeat(self) -> None:
         events = self.observer.get_recent_events()
+
+        # Early return if no events, this is the heartbeat signal
+        if not events:
+            return
+
         obs_str = self.observer.format_observations(events)
         personality = self.config.get("personality", "")
 
@@ -526,7 +596,13 @@ class FuwaApp(App):
         if self.initial_choice_made:
             self.call_from_thread(self.disable_buttons)
 
-        memories = get_all_memories()
+        # Get relevant context from local vector DB instead of all memories
+        from memory import search_memory
+
+        # Use recent events to build a search query
+        query_text = " ".join([e["filename"] for e in events])
+        memories = search_memory(query_text, top_k=5)
+
         comment = generate_comment(obs_str, personality, memories)
         comment = self.extract_and_set_mood(comment)
         self.call_from_thread(self.log_message, "Fuwa", comment)
@@ -573,8 +649,8 @@ class FuwaApp(App):
             self.query_one("#stat_total_events", Label).update(f"Events Handled: {total_events}")
 
             # Session Info
-            from memory import get_all_memories
-            memories = get_all_memories()
+            from memory import load_memory
+            memories = load_memory()
             files_observed = len(memories)
             self.query_one("#stat_files_observed", Label).update(f"Context Size: {files_observed} files")
 

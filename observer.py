@@ -16,7 +16,13 @@ class ChangeHandler(FileSystemEventHandler):
 
         # Ignore git and common ignore patterns
         path_str = str(event.src_path)
-        if ".git" in path_str or "__pycache__" in path_str:
+        ignored_patterns = [
+            ".git", "__pycache__", "node_modules", "venv", ".venv",
+            "build", "dist", "target", ".idea", ".vscode", "memory.json", "config.json"
+        ]
+
+        # Check if any ignored pattern is a part of the path
+        if any(f"/{pat}/" in path_str or path_str.endswith(f"/{pat}") or path_str.startswith(f"{pat}/") or path_str == pat for pat in ignored_patterns):
             return
 
         try:
