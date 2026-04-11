@@ -1,5 +1,5 @@
 from textual.app import App, ComposeResult
-from textual.containers import Container, Vertical, Horizontal
+from textual.containers import Container, Vertical, Horizontal, VerticalScroll
 from textual.widgets import Header, Footer, Static, Input, Button, Log, Label, RichLog
 from textual.screen import ModalScreen
 
@@ -201,6 +201,18 @@ class SettingsModal(ModalScreen):
             self.app.log_message("System", "Settings saved!")
             self.app.pop_screen()
 
+class ChatMessage(Horizontal):
+    def __init__(self, sender: str, text: str):
+        super().__init__(classes=f"message {sender.lower()}")
+        self.sender = sender
+        self.text = text
+
+    def compose(self) -> ComposeResult:
+        if self.sender.lower() == "system":
+            yield Static(self.text, classes=f"bubble {self.sender.lower()}")
+        else:
+            yield Static(f"{self.sender}: {self.text}", classes=f"bubble {self.sender.lower()}")
+
 class FuwaApp(App):
     BINDINGS = [
         ("1", "select_choice(1)", "Choice 1"),
@@ -235,10 +247,42 @@ class FuwaApp(App):
     #axolotl_view {
         text-align: center;
     }
-    #chat_log {
+    #chat_container {
         height: 1fr;
+        width: 100%;
+        layout: vertical;
+        layers: base top;
         border-bottom: dashed $secondary;
     }
+    #chat_log {
+        height: 1fr;
+        width: 100%;
+        layer: base;
+        overflow-y: auto;
+    }
+    #chat_fade {
+        dock: top;
+        height: 2;
+        width: 100%;
+        layer: top;
+        background: $surface;
+    }
+    .message {
+        width: 100%;
+        height: auto;
+        margin-bottom: 1;
+    }
+    .message.user { align: right middle; }
+    .message.fuwa { align: left middle; }
+    .message.system { align: center middle; }
+    .bubble {
+        width: auto;
+        max-width: 80%;
+        padding: 1 2;
+    }
+    .bubble.user { background: $accent 30%; color: $text; border: round $accent; }
+    .bubble.fuwa { background: $secondary 30%; color: $text; border: round $secondary; }
+    .bubble.system { background: transparent; color: $text-muted; border: none; text-align: justify; }
     #dashboard_view {
         height: 1fr;
         padding: 1;
@@ -283,7 +327,10 @@ class FuwaApp(App):
         yield Header("Fuwa - Your Terminal Buddy")
         with Container(id="main_container"):
             with Container(id="left_panel"):
-                yield RichLog(id="chat_log", markup=True)
+                with Container(id="chat_container"):
+                    yield Static(id="chat_fade")
+                    with VerticalScroll(id="chat_log"):
+                        pass
                 yield Static(self.anim.next_frame(), id="axolotl_view")
             with Container(id="right_panel"):
                 yield Dashboard(id="dashboard_view")
@@ -316,7 +363,7 @@ class FuwaApp(App):
 
     def on_mount(self) -> None:
         self.axolotl_view = self.query_one("#axolotl_view", Static)
-        self.chat_log_view = self.query_one("#chat_log", RichLog)
+        self.chat_log_view = self.query_one("#chat_log", VerticalScroll)
         self.choice_btns = [self.query_one(f"#btn_{i}", Button) for i in range(3)]
         self.user_input = self.query_one("#user_input", Input)
 
@@ -339,10 +386,26 @@ class FuwaApp(App):
 
     def update_animation(self) -> None:
         self.axolotl_view.update(self.anim.next_frame())
+        try:
+            import time
+            import math
+            mood_str = self.anim.mood
+            t = time.time() * 5
+            wave_chars = " ▂▃▄▅▆▇█"
+            wave1 = "".join(wave_chars[int((math.sin(t + i) + 1) * 3.5)] for i in range(5))
+            wave2 = "".join(wave_chars[int((math.sin(t + i + 3) + 1) * 3.5)] for i in range(5))
+            styled_mood = f"Mood: [bold magenta]{wave1}[/] [bold cyan]{mood_str}[/] [bold magenta]{wave2}[/]"
+            self.query_one("#stat_mood", Label).update(styled_mood)
+        except Exception:
+            pass
 
     def log_message(self, sender: str, message: str) -> None:
-        formatted = f"[bold cyan]{sender}[/]: {message}"
-        self.chat_log_view.write(formatted)
+        message = re.sub(rf"^{re.escape(sender)}:\s*", "", message, flags=re.IGNORECASE).strip()
+
+        msg_widget = ChatMessage(sender, message)
+        self.chat_log_view.mount(msg_widget)
+        self.chat_log_view.scroll_end(animate=False)
+
         self.chat_history.append(f"{sender}: {message}")
         # Keep history manageable
         if len(self.chat_history) > 20:
@@ -359,11 +422,12 @@ class FuwaApp(App):
 
     def extract_and_set_mood(self, text: str) -> str:
         """Extracts mood tag like [MOOD: HAPPY], sets the mood, and returns text without the tag."""
-        match = re.search(r"\[MOOD:\s*([a-zA-Z0-9_]+)\]", text, re.IGNORECASE)
+        match = re.search(r"\[MOOD:\s*([a-zA-Z0-9_,\s]+)\]", text, re.IGNORECASE)
         if match:
-            mood = match.group(1).upper()
-            self.anim.set_mood(mood)
-            text = re.sub(r"\[MOOD:\s*[a-zA-Z0-9_]+\]\s*", "", text, flags=re.IGNORECASE).strip()
+            moods = [m.strip().upper() for m in match.group(1).split(",")]
+            if moods:
+                self.anim.set_mood(moods[0])
+            text = re.sub(r"\[MOOD:\s*[a-zA-Z0-9_,\s]+\]\s*", "", text, flags=re.IGNORECASE).strip()
         return text
 
     @work(exclusive=True, thread=True)
@@ -422,7 +486,6 @@ class FuwaApp(App):
             total_events = getattr(self.observer, "total_events", 0)
             self.query_one("#stat_total_events", Label).update(f"Total Events: {total_events}")
 
-            self.query_one("#stat_mood", Label).update(f"Current Mood: {self.anim.mood}")
             self.query_one("#stat_heartbeats", Label).update(f"Heartbeats: {self.heartbeat_count}")
         except Exception:
             pass
