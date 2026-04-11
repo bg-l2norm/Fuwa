@@ -81,6 +81,8 @@ class AxolotlAnimation:
         if has_valid_bounds:
             crop_box = (global_min_x, global_min_y, global_max_x, global_max_y)
 
+        import hashlib
+
         # Check if we need to generate any frames first to determine if we should show progress
         needs_generation = []
         for mood_str, files in temp_frames.items():
@@ -91,8 +93,22 @@ class AxolotlAnimation:
                 generate = False
                 if not os.path.exists(sh_filepath):
                     generate = True
-                elif os.path.getmtime(sh_filepath) < os.path.getmtime(filepath):
-                    generate = True
+                else:
+                    try:
+                        with open(filepath, 'rb') as img_f:
+                            current_hash = hashlib.md5(img_f.read()).hexdigest()
+
+                        cached_hash = None
+                        with open(sh_filepath, 'r', encoding='utf-8') as sh_f:
+                            for line in sh_f:
+                                if line.startswith('# md5:'):
+                                    cached_hash = line.split('# md5:')[1].strip()
+                                    break
+
+                        if current_hash != cached_hash:
+                            generate = True
+                    except Exception:
+                        generate = True
 
                 if generate:
                     needs_generation.append((filepath, sh_filepath, mood_str))
@@ -130,11 +146,12 @@ class AxolotlAnimation:
                     sh_filepath = os.path.join(ansi_dir, sh_filename)
                     if os.path.exists(sh_filepath):
                         with open(sh_filepath, "r", encoding="utf-8") as f:
-                            lines = f.readlines()
-                            if len(lines) >= 2 and "base64" in lines[1]:
-                                b64_str = lines[1].split('echo "')[1].split('" | base64')[0]
-                                ansi_str = base64.b64decode(b64_str).decode('utf-8')
-                                self.frames[mood_str].append(Text.from_ansi(ansi_str))
+                            for line in f:
+                                if "base64" in line and "echo \"" in line:
+                                    b64_str = line.split('echo "')[1].split('" | base64')[0]
+                                    ansi_str = base64.b64decode(b64_str).decode('utf-8')
+                                    self.frames[mood_str].append(Text.from_ansi(ansi_str))
+                                    break
                 except Exception as e:
                     print(f"Failed to load {filepath}: {e}")
 
