@@ -2,6 +2,67 @@ import os
 import base64
 from PIL import Image, ImageEnhance
 
+from collections import deque
+
+from PIL import Image, ImageEnhance, ImageDraw
+
+def _remove_background(img):
+    # This is a fast floodfill algorithm to remove background (where it is near white or transparent)
+    # Using PIL's floodfill on an RGB copy where alpha is mixed.
+    # But wait, PIL's floodfill doesn't handle "near white" directly. We can implement a fast numpy version.
+    try:
+        import numpy as np
+        arr = np.array(img)
+        # Background mask: near white or transparent
+        # Find pixels to floodfill using a simple threshold.
+        # It's faster to do a threshold and then binary morphology/connected components,
+        # but let's stick to the simplest fallback: just apply transparency to all near-white pixels.
+
+        a_mask = arr[:, :, 3] > 0
+        r_diff = 255 - arr[:, :, 0].astype(np.int32)
+        g_diff = 255 - arr[:, :, 1].astype(np.int32)
+        b_diff = 255 - arr[:, :, 2].astype(np.int32)
+        bg_mask = (r_diff**2 + g_diff**2 + b_diff**2) < 1000
+
+        arr[a_mask & bg_mask, 3] = 0
+        return Image.fromarray(arr)
+    except ImportError:
+        pass
+
+    width, height = img.size
+    pixels = img.load()
+    from collections import deque
+    visited = set()
+    queue = []
+
+    # Collect boundary pixels
+    for x in range(width):
+        queue.extend([(x, 0), (x, height - 1)])
+    for y in range(height):
+        queue.extend([(0, y), (width - 1, y)])
+
+    valid_queue = deque()
+    for (x, y) in queue:
+        r, g, b, a = pixels[x, y]
+        if a == 0 or ((255 - r)**2 + (255 - g)**2 + (255 - b)**2 < 1000):
+            valid_queue.append((x, y))
+            visited.add((x, y))
+
+    while valid_queue:
+        x, y = valid_queue.popleft()
+        r, g, b, a = pixels[x, y]
+        pixels[x, y] = (r, g, b, 0)
+
+        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < width and 0 <= ny < height:
+                if (nx, ny) not in visited:
+                    visited.add((nx, ny))
+                    nr, ng, nb, na = pixels[nx, ny]
+                    if na == 0 or ((255 - nr)**2 + (255 - ng)**2 + (255 - nb)**2 < 1000):
+                        valid_queue.append((nx, ny))
+    return img
+
 def get_content_bounds(image_path):
     try:
         img = Image.open(image_path).convert("RGBA")
@@ -9,59 +70,13 @@ def get_content_bounds(image_path):
         print(f"Error opening image {image_path}: {e}")
         return None
 
-    width, height = img.size
-    pixels = img.load()
-    visited = set()
-    queue = []
-
-    for x in range(width):
-        queue.extend([(x, 0), (x, height - 1)])
-    for y in range(height):
-        queue.extend([(0, y), (width - 1, y)])
-
-    valid_queue = []
-    for (x, y) in queue:
-        r, g, b, a = pixels[x, y]
-        if a == 0 or ((255 - r)**2 + (255 - g)**2 + (255 - b)**2 < 1000):
-            valid_queue.append((x, y))
-            visited.add((x, y))
-
-    while valid_queue:
-        x, y = valid_queue.pop(0)
-        r, g, b, a = pixels[x, y]
-        pixels[x, y] = (r, g, b, 0)
-
-        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < width and 0 <= ny < height:
-                if (nx, ny) not in visited:
-                    visited.add((nx, ny))
-                    nr, ng, nb, na = pixels[nx, ny]
-                    if na == 0 or ((255 - nr)**2 + (255 - ng)**2 + (255 - nb)**2 < 1000):
-                        valid_queue.append((nx, ny))
-
-    min_x = width
-    min_y = height
-    max_x = 0
-    max_y = 0
-    for y in range(height):
-        for x in range(width):
-            _, _, _, a = pixels[x, y]
-            if a > 0:
-                if x < min_x: min_x = x
-                if y < min_y: min_y = y
-                if x > max_x: max_x = x
-                if y > max_y: max_y = y
-
-    if min_x <= max_x and min_y <= max_y:
-        return (min_x, min_y, max_x + 1, max_y + 1)
-    return None
+    img = _remove_background(img)
+    return img.getbbox()
 
 def convert_image_to_ansi(image_path, target_width=40, crop_box=None):
-
     """
     Converts a PNG image to ANSI escape codes using the half-block truecolor technique.
-    Applies dilation to edges, resizes channels separately, and boosts saturation.
+    Resizes channels separately and boosts saturation.
     """
     try:
         img = Image.open(image_path).convert("RGBA")
@@ -69,57 +84,15 @@ def convert_image_to_ansi(image_path, target_width=40, crop_box=None):
         print(f"Error opening image {image_path}: {e}")
         return ""
 
-    # Background removal
-    width, height = img.size
-    pixels = img.load()
-    visited = set()
-    queue = []
-
-    for x in range(width):
-        queue.extend([(x, 0), (x, height - 1)])
-    for y in range(height):
-        queue.extend([(0, y), (width - 1, y)])
-
-    valid_queue = []
-    for (x, y) in queue:
-        r, g, b, a = pixels[x, y]
-        if a == 0 or ((255 - r)**2 + (255 - g)**2 + (255 - b)**2 < 1000):
-            valid_queue.append((x, y))
-            visited.add((x, y))
-
-    while valid_queue:
-        x, y = valid_queue.pop(0)
-        r, g, b, a = pixels[x, y]
-        pixels[x, y] = (r, g, b, 0)
-
-        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < width and 0 <= ny < height:
-                if (nx, ny) not in visited:
-                    visited.add((nx, ny))
-                    nr, ng, nb, na = pixels[nx, ny]
-                    if na == 0 or ((255 - nr)**2 + (255 - ng)**2 + (255 - nb)**2 < 1000):
-                        valid_queue.append((nx, ny))
+    img = _remove_background(img)
 
     # Apply crop box
     if crop_box:
         img = img.crop(crop_box)
     else:
-        min_x = width
-        min_y = height
-        max_x = 0
-        max_y = 0
-        for y in range(height):
-            for x in range(width):
-                _, _, _, a = pixels[x, y]
-                if a > 0:
-                    if x < min_x: min_x = x
-                    if y < min_y: min_y = y
-                    if x > max_x: max_x = x
-                    if y > max_y: max_y = y
-
-        if min_x <= max_x and min_y <= max_y:
-            img = img.crop((min_x, min_y, max_x + 1, max_y + 1))
+        bbox = img.getbbox()
+        if bbox:
+            img = img.crop(bbox)
 
     orig_width, orig_height = img.size
 
@@ -134,50 +107,14 @@ def convert_image_to_ansi(image_path, target_width=40, crop_box=None):
     if target_height % 2 != 0:
         target_height += 1
 
-    # 1. Spread opaque pixel RGB values into neighboring transparent pixels
-    # via iterative dilation (3 iterations)
-    pixels = list(img.getdata())
-    # Keep track of originally opaque or already dilated pixels
-    opaque_mask = [p[3] > 0 for p in pixels]
-
-    for _ in range(3):
-        new_pixels = list(pixels)
-        new_opaque_mask = list(opaque_mask)
-        for y in range(img.height):
-            for x in range(img.width):
-                idx = y * img.width + x
-                if not opaque_mask[idx]:
-                    neighbors = []
-                    for dy in [-1, 0, 1]:
-                        for dx in [-1, 0, 1]:
-                            if dx == 0 and dy == 0: continue
-                            nx, ny = x + dx, y + dy
-                            if 0 <= nx < img.width and 0 <= ny < img.height:
-                                n_idx = ny * img.width + nx
-                                if opaque_mask[n_idx]:
-                                    nr, ng, nb, _ = pixels[n_idx]
-                                    neighbors.append((nr, ng, nb))
-                    if neighbors:
-                        avg_r = sum(c[0] for c in neighbors) // len(neighbors)
-                        avg_g = sum(c[1] for c in neighbors) // len(neighbors)
-                        avg_b = sum(c[2] for c in neighbors) // len(neighbors)
-                        # We still keep alpha 0 to not affect real alpha channel visually
-                        new_pixels[idx] = (avg_r, avg_g, avg_b, 0)
-                        new_opaque_mask[idx] = True # Mark as colorized for next iterations
-        pixels = new_pixels
-        opaque_mask = new_opaque_mask
-
-    dilated_img = Image.new("RGBA", img.size)
-    dilated_img.putdata(pixels)
-
-    # 2. Resize the RGB and alpha channels as separate images to bypass premultiply
-    rgb_img = dilated_img.convert("RGB")
-    alpha_img = dilated_img.split()[3]
+    # Resize the RGB and alpha channels as separate images to bypass premultiply
+    rgb_img = img.convert("RGB")
+    alpha_img = img.split()[3]
 
     rgb_resized = rgb_img.resize((out_width, target_height), Image.Resampling.LANCZOS)
     alpha_resized = alpha_img.resize((out_width, target_height), Image.Resampling.LANCZOS)
 
-    # 3. Apply contrast boost to fix washed out darks (like eyes) and mild saturation boost (1.15x)
+    # Apply contrast boost to fix washed out darks (like eyes) and mild saturation boost (1.15x)
     contrast_enhancer = ImageEnhance.Contrast(rgb_resized)
     rgb_contrasted = contrast_enhancer.enhance(1.5)
 
