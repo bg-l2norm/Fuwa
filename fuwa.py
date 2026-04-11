@@ -1,6 +1,7 @@
 from textual.app import App, ComposeResult
 from textual.containers import Container, Vertical, Horizontal
 from textual.widgets import Header, Footer, Static, Input, Button, Log, Label, RichLog
+from textual.screen import ModalScreen
 
 import re
 from textual import work
@@ -120,12 +121,78 @@ def do_first_run_setup():
             progress.add_task("waking", total=None)
             time.sleep(2.0)
 
+class SettingsModal(ModalScreen):
+    CSS = """
+    #settings_dialog {
+        width: 60%;
+        height: auto;
+        padding: 2;
+        border: solid green;
+        align: center middle;
+        background: $surface;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        config = load_config()
+        with Vertical(id="settings_dialog"):
+            yield Label("Settings")
+            yield Label("Provider:")
+            yield Input(value=config.get("provider", "openai"), placeholder="Provider (e.g. openrouter, openai)", id="provider_input")
+            yield Label("Model:")
+            yield Input(value=config.get("model", "gpt-4o-mini"), placeholder="Model (e.g. google/gemma-7b-it:free)", id="model_input")
+            yield Label("API Key:")
+            yield Input(value=config.get("api_key", ""), placeholder="API Key", password=True, id="api_key_input")
+            yield Label("Heartbeat interval / requests per min (0 to disable):")
+            yield Input(value=str(config.get("requests_per_min", 0)), placeholder="Requests per minute (0 to disable)", id="rpm_input")
+            with Horizontal():
+                yield Button("Save", id="save_btn", variant="primary")
+                yield Button("Cancel", id="cancel_btn")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "cancel_btn":
+            self.app.pop_screen()
+        elif event.button.id == "save_btn":
+            provider = self.query_one("#provider_input", Input).value.strip()
+            model = self.query_one("#model_input", Input).value.strip()
+            api_key = self.query_one("#api_key_input", Input).value.strip()
+            try:
+                rpm = int(self.query_one("#rpm_input", Input).value.strip())
+            except ValueError:
+                rpm = 0
+
+            config = load_config()
+            config["provider"] = provider
+            config["model"] = model
+            if api_key:
+                config["api_key"] = api_key
+            config["requests_per_min"] = rpm
+
+            from config import save_config
+            save_config(config)
+
+            self.app.config = config
+
+            # Update heartbeat timer
+            if hasattr(self.app, 'heartbeat_timer') and self.app.heartbeat_timer:
+                self.app.heartbeat_timer.stop()
+                self.app.heartbeat_timer = None
+
+            if rpm > 0:
+                interval = 60.0 / rpm
+                self.app.heartbeat_timer = self.app.set_interval(interval, self.app.trigger_heartbeat)
+
+            self.app.log_message("System", "Settings saved!")
+            self.app.pop_screen()
+
 class FuwaApp(App):
     BINDINGS = [
         ("1", "select_choice(1)", "Choice 1"),
         ("2", "select_choice(2)", "Choice 2"),
         ("3", "select_choice(3)", "Choice 3"),
         ("s", "toggle_size", "Change Buddy Size"),
+        ("o", "open_settings", "Settings"),
+        ("h", "manual_heartbeat", "Heartbeat"),
     ]
 
     CSS = """
@@ -204,8 +271,12 @@ class FuwaApp(App):
         self.set_interval(0.5, self.update_animation)
         self.log_message("System", "Fuwa woke up!")
         self.observer.start()
-        # Start heartbeat every 60 seconds (or less for testing, let's do 30)
-        self.heartbeat_timer = self.set_interval(30.0, self.trigger_heartbeat)
+
+        rpm = self.config.get("requests_per_min", 0)
+        if rpm > 0:
+            interval = 60.0 / rpm
+            self.heartbeat_timer = self.set_interval(interval, self.trigger_heartbeat)
+
         self.trigger_heartbeat() # Initial trigger
 
     def on_unmount(self) -> None:
@@ -289,6 +360,13 @@ class FuwaApp(App):
                 user_choice = str(btn.label)
                 self.log_message("You", user_choice)
                 self.handle_user_choice(user_choice)
+
+    def action_open_settings(self) -> None:
+        self.push_screen(SettingsModal())
+
+    def action_manual_heartbeat(self) -> None:
+        self.log_message("System", "Manual heartbeat triggered.")
+        self.trigger_heartbeat()
 
     def action_toggle_size(self) -> None:
         sizes = ["small", "normal", "large"]

@@ -27,7 +27,9 @@ def simple_completion(messages, model, provider, api_key, max_tokens=100, respon
         url = "https://api.openai.com/v1/chat/completions" if provider == "openai" else "https://openrouter.ai/api/v1/chat/completions"
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}"
+            "Authorization": f"Bearer {api_key}",
+            "HTTP-Referer": "https://github.com/fuwa-app/fuwa",
+            "X-Title": "Fuwa"
         }
         data = {
             "model": model,
