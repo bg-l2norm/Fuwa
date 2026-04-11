@@ -6,6 +6,20 @@ from textual.screen import ModalScreen
 import re
 from textual import work
 
+class Dashboard(Container):
+    def compose(self) -> ComposeResult:
+        yield Label("Dashboard Insights", id="dashboard_title")
+        with Horizontal():
+            with Vertical(classes="dash_col"):
+                yield Label("User Stats", classes="dash_header")
+                yield Label("Active Time: 0m", id="stat_active_time")
+                yield Label("Files Observed: 0", id="stat_files_observed")
+                yield Label("Total Events: 0", id="stat_total_events")
+            with Vertical(classes="dash_col"):
+                yield Label("Buddy Stats", classes="dash_header")
+                yield Label("Current Mood: NORMAL", id="stat_mood")
+                yield Label("Heartbeats: 0", id="stat_heartbeats")
+
 import os
 from axolotl import AxolotlAnimation
 from config import load_config, update_config, CONFIG_FILE
@@ -118,8 +132,10 @@ def do_first_run_setup():
             TextColumn("[bold cyan]Waking up Fuwa...[/bold cyan]"),
             transient=True
         ) as progress:
-            progress.add_task("waking", total=None)
-            time.sleep(2.0)
+            task = progress.add_task("waking", total=10)
+            for _ in range(10):
+                time.sleep(0.1)
+                progress.update(task, advance=1)
 
 class SettingsModal(ModalScreen):
     CSS = """
@@ -208,6 +224,7 @@ class FuwaApp(App):
         height: 1fr;
         border: solid $accent;
         align: center middle;
+        layers: base top;
     }
     #right_panel {
         width: 70%;
@@ -222,9 +239,18 @@ class FuwaApp(App):
         height: 1fr;
         border-bottom: dashed $secondary;
     }
-    #rich_log {
+    #dashboard_view {
         height: 1fr;
-        border-bottom: dashed $secondary;
+        padding: 1;
+    }
+    .dash_col {
+        width: 1fr;
+        height: 100%;
+    }
+    .dash_header {
+        text-style: bold;
+        color: $accent;
+        margin-bottom: 1;
     }
     #choices_container {
         height: auto;
@@ -247,20 +273,46 @@ class FuwaApp(App):
         self.axolotl_view = None
         self.chat_log_view = None
         self.choice_btns = []
+        self.initial_choice_made = False
+
+        import time
+        self.session_start_time = time.time()
+        self.heartbeat_count = 0
 
     def compose(self) -> ComposeResult:
         yield Header("Fuwa - Your Terminal Buddy")
         with Container(id="main_container"):
             with Container(id="left_panel"):
+                yield RichLog(id="chat_log", markup=True)
                 yield Static(self.anim.next_frame(), id="axolotl_view")
             with Container(id="right_panel"):
-                yield RichLog(id="chat_log", markup=True)
+                yield Dashboard(id="dashboard_view")
                 with Container(id="choices_container"):
                     yield Button("Loading choices...", id="btn_0", classes="choice_btn", disabled=True)
                     yield Button("...", id="btn_1", classes="choice_btn", disabled=True)
                     yield Button("...", id="btn_2", classes="choice_btn", disabled=True)
                 yield Input(placeholder="Say something to Fuwa...", id="user_input")
         yield Footer()
+
+    def on_resize(self, event) -> None:
+        try:
+            dashboard = self.query_one("#dashboard_view")
+            right_panel = self.query_one("#right_panel")
+            left_panel = self.query_one("#left_panel")
+            if event.size.width <= 80:
+                dashboard.display = False
+                left_panel.styles.width = "100%"
+                right_panel.styles.width = "100%"
+                right_panel.styles.height = "auto"
+                right_panel.styles.border = "none"
+            else:
+                dashboard.display = True
+                left_panel.styles.width = "30%"
+                right_panel.styles.width = "70%"
+                right_panel.styles.height = "1fr"
+                right_panel.styles.border = "solid $accent"
+        except Exception:
+            pass
 
     def on_mount(self) -> None:
         self.axolotl_view = self.query_one("#axolotl_view", Static)
@@ -271,6 +323,9 @@ class FuwaApp(App):
         self.set_interval(0.5, self.update_animation)
         self.log_message("System", "Fuwa woke up!")
         self.observer.start()
+
+        # Set initial deterministic choices
+        self.update_choices(["*Stare blankly*", "*Go back to work*", "*Poke axolotl*"])
 
         rpm = self.config.get("requests_per_min", 0)
         if rpm > 0:
@@ -333,7 +388,8 @@ class FuwaApp(App):
                         print(f"Error reading {filepath} for summary: {e}")
 
         # Disable buttons while generating
-        self.call_from_thread(self.disable_buttons)
+        if self.initial_choice_made:
+            self.call_from_thread(self.disable_buttons)
 
         memories = get_all_memories()
         comment = generate_comment(obs_str, personality, memories)
@@ -345,8 +401,31 @@ class FuwaApp(App):
         history_copy.append(f"Fuwa: {comment}")
         context = "\n".join(history_copy[-5:])
 
-        choices = generate_choices(context, personality)
-        self.call_from_thread(self.update_choices, choices)
+        if self.initial_choice_made:
+            choices = generate_choices(context, personality)
+            self.call_from_thread(self.update_choices, choices)
+
+        self.heartbeat_count += 1
+        self.call_from_thread(self.update_dashboard)
+
+    def update_dashboard(self) -> None:
+        import time
+        # Ensure we don't crash if Dashboard is not rendered or collapsed
+        try:
+            active_time_mins = int((time.time() - self.session_start_time) / 60)
+            self.query_one("#stat_active_time", Label).update(f"Active Time: {active_time_mins}m")
+
+            from memory import get_all_memories
+            files_observed = len(get_all_memories())
+            self.query_one("#stat_files_observed", Label).update(f"Files Observed: {files_observed}")
+
+            total_events = getattr(self.observer, "total_events", 0)
+            self.query_one("#stat_total_events", Label).update(f"Total Events: {total_events}")
+
+            self.query_one("#stat_mood", Label).update(f"Current Mood: {self.anim.mood}")
+            self.query_one("#stat_heartbeats", Label).update(f"Heartbeats: {self.heartbeat_count}")
+        except Exception:
+            pass
 
     def disable_buttons(self) -> None:
         for btn in self.choice_btns:
@@ -404,6 +483,9 @@ class FuwaApp(App):
     @work(exclusive=True, thread=True)
     def handle_user_choice(self, user_choice: str) -> None:
         self.call_from_thread(self.disable_buttons)
+
+        self.initial_choice_made = True
+
         personality = self.config.get("personality", "")
         context = "\n".join(self.chat_history[-5:])
 

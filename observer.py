@@ -7,6 +7,7 @@ from watchdog.events import FileSystemEventHandler
 class ChangeHandler(FileSystemEventHandler):
     def __init__(self, recent_events):
         self.recent_events = recent_events
+        self.total_events = 0
         super().__init__()
 
     def process(self, event):
@@ -40,6 +41,7 @@ class ChangeHandler(FileSystemEventHandler):
             "formatted_str": f"[{timestamp}] File {action}: {filename}"
         }
         self.recent_events.append(event_data)
+        self.total_events += 1
 
     def on_modified(self, event):
         self.process(event)
@@ -81,6 +83,10 @@ class FileSystemObserver:
         events = list(self.recent_events)
         self.recent_events.clear() # Clear after reading so we don't repeat
         return events
+
+    @property
+    def total_events(self) -> int:
+        return self.handler.total_events
 
     def format_observations(self, events: list) -> str:
         if not events:
