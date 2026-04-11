@@ -9,7 +9,7 @@ from textual import work
 
 class Dashboard(Container):
     def compose(self) -> ComposeResult:
-        yield Label("🌸 Fuwa's God-Tier Dashboard 🌸", id="dashboard_title")
+        yield Label("🌸 Fuwa's Dashboard 🌸", id="dashboard_title")
         with Horizontal():
             with Vertical(classes="dash_col", id="dash_sys"):
                 yield Label("💻 System Stats", classes="dash_header")
@@ -134,7 +134,7 @@ def do_first_run_setup():
 
         console.print("\n[bold green]✅ Setup complete![/bold green]\n")
 
-        # Aesthetic loader
+        # Loading animation
         with Progress(
             SpinnerColumn(spinner_name="dots"),
             TextColumn("[bold cyan]Waking up Fuwa...[/bold cyan]"),
@@ -151,7 +151,7 @@ class SettingsModal(ModalScreen):
         width: 60%;
         height: auto;
         padding: 2;
-        border: solid green;
+        border: round #ff69b4;
         align: center middle;
         background: $surface;
     }
@@ -242,7 +242,7 @@ class FuwaApp(App):
     #left_panel {
         width: 30%;
         height: 1fr;
-        border: solid $accent;
+        border: round #ffb6c1;
         align: center middle;
         layers: base top;
     }
@@ -250,7 +250,7 @@ class FuwaApp(App):
         width: 70%;
         height: 1fr;
         layout: vertical;
-        border: solid $accent;
+        border: round #ffb6c1;
     }
     #axolotl_view {
         text-align: center;
@@ -315,7 +315,7 @@ class FuwaApp(App):
     .dash_col {
         width: 1fr;
         height: auto;
-        border: panel #ff69b4;
+        border: round #ff69b4;
         margin: 1;
         padding: 1;
         background: $surface;
@@ -403,7 +403,7 @@ class FuwaApp(App):
                 left_panel.styles.width = "30%"
                 right_panel.styles.width = "70%"
                 right_panel.styles.height = "1fr"
-                right_panel.styles.border = "solid $accent"
+                right_panel.styles.border = ("round", "#ffb6c1")
         except Exception:
             pass
 
@@ -452,6 +452,21 @@ class FuwaApp(App):
 
             styled_mood = f"Mood: {wave} [bold pink1]{mood_str}[/] {wave[::-1]}"
             self.query_one("#stat_mood", Label).update(styled_mood)
+
+            # Animate borders
+            border_colors = ["#ffe4e1", "#ffb6c1", "#ff69b4", "#ff1493", "#ff69b4", "#ffb6c1"]
+            color_idx = int(time.time() * 2) % len(border_colors)
+            current_color = border_colors[color_idx]
+
+            self.query_one("#left_panel").styles.border = ("round", current_color)
+
+            right_panel = self.query_one("#right_panel")
+            # Textual border edge definition is a tuple. right_panel.styles.border[0] is e.g. ('none', Color(...))
+            if right_panel.styles.border and getattr(right_panel.styles.border[0], "name", right_panel.styles.border[0][0] if isinstance(right_panel.styles.border[0], tuple) else right_panel.styles.border[0]) != "none":
+                right_panel.styles.border = ("round", current_color)
+
+            for col in self.query(".dash_col"):
+                col.styles.border = ("round", current_color)
         except Exception:
             pass
 
@@ -566,7 +581,7 @@ class FuwaApp(App):
             est_tokens = sum(len(m) for m in memories.values()) // 4 + sum(len(h) for h in self.chat_history) // 4
             self.query_one("#stat_tokens", Label).update(f"Est. Tokens: ~{est_tokens}")
 
-            # Simple latency dummy for "god tier" look
+            # Simple latency dummy
             import math
             latency = 1.2 + (math.sin(time.time()) * 0.3)
             self.query_one("#stat_latency", Label).update(f"Avg Latency: ~{latency:.2f}s")
