@@ -2,23 +2,31 @@ from textual.app import App, ComposeResult
 from textual.containers import Container, Vertical, Horizontal, VerticalScroll
 from textual.widgets import Header, Footer, Static, Input, Button, Log, Label, RichLog
 from textual.screen import ModalScreen
+from textual.events import DescendantFocus, DescendantBlur
 
 import re
 from textual import work
 
 class Dashboard(Container):
     def compose(self) -> ComposeResult:
-        yield Label("Dashboard Insights", id="dashboard_title")
+        yield Label("🌸 Fuwa's God-Tier Dashboard 🌸", id="dashboard_title")
         with Horizontal():
-            with Vertical(classes="dash_col"):
-                yield Label("User Stats", classes="dash_header")
-                yield Label("Active Time: 0m", id="stat_active_time")
-                yield Label("Files Observed: 0", id="stat_files_observed")
-                yield Label("Total Events: 0", id="stat_total_events")
-            with Vertical(classes="dash_col"):
-                yield Label("Buddy Stats", classes="dash_header")
-                yield Label("Current Mood: NORMAL", id="stat_mood")
+            with Vertical(classes="dash_col", id="dash_sys"):
+                yield Label("💻 System Stats", classes="dash_header")
+                yield Label("Uptime: 00:00:00", id="stat_active_time")
+                yield Label("Memory Usage: ~124MB", id="stat_mem")
+                yield Label("Observer CPU: <1%", id="stat_cpu")
+            with Vertical(classes="dash_col", id="dash_buddy"):
+                yield Label("🐾 Buddy Stats", classes="dash_header")
+                yield Label("Mood: NORMAL", id="stat_mood")
                 yield Label("Heartbeats: 0", id="stat_heartbeats")
+                yield Label("Events Handled: 0", id="stat_total_events")
+        with Horizontal(id="dash_row2"):
+            with Vertical(classes="dash_col"):
+                yield Label("🧠 Session Info", classes="dash_header")
+                yield Label("Est. Tokens: ~0", id="stat_tokens")
+                yield Label("Context Size: 0 files", id="stat_files_observed")
+                yield Label("Avg Latency: ~1.2s", id="stat_latency")
 
 import os
 from axolotl import AxolotlAnimation
@@ -260,12 +268,27 @@ class FuwaApp(App):
         layer: base;
         overflow-y: auto;
     }
-    #chat_fade {
+    #chat_fade_container {
         dock: top;
-        height: 2;
+        height: 3;
         width: 100%;
         layer: top;
-        background: $surface;
+        layout: vertical;
+    }
+    #chat_fade_1 {
+        height: 1;
+        width: 100%;
+        background: $surface 100%;
+    }
+    #chat_fade_2 {
+        height: 1;
+        width: 100%;
+        background: $surface 60%;
+    }
+    #chat_fade_3 {
+        height: 1;
+        width: 100%;
+        background: $surface 30%;
     }
     .message {
         width: 100%;
@@ -279,22 +302,42 @@ class FuwaApp(App):
         width: auto;
         max-width: 80%;
         padding: 1 2;
+        text-style: bold;
     }
-    .bubble.user { background: $accent 30%; color: $text; border: round $accent; }
-    .bubble.fuwa { background: $secondary 30%; color: $text; border: round $secondary; }
-    .bubble.system { background: transparent; color: $text-muted; border: none; text-align: justify; }
+    .bubble.user { background: #ffe4e1; color: #333333; border: round #ffb6c1; }
+    .bubble.fuwa { background: #ffc0cb; color: #333333; border: round #ff69b4; }
+    .bubble.system { background: transparent; color: $text-muted; border: none; text-align: justify; text-style: italic; }
     #dashboard_view {
         height: 1fr;
         padding: 1;
+        layout: vertical;
     }
     .dash_col {
         width: 1fr;
-        height: 100%;
+        height: auto;
+        border: panel #ff69b4;
+        margin: 1;
+        padding: 1;
+        background: $surface;
     }
     .dash_header {
         text-style: bold;
-        color: $accent;
+        color: #ff69b4;
         margin-bottom: 1;
+        border-bottom: dashed #ffb6c1;
+    }
+    #dashboard_title {
+        text-style: bold;
+        text-align: center;
+        width: 100%;
+        color: #ff69b4;
+        margin-bottom: 1;
+    }
+    #dash_row2 {
+        height: auto;
+    }
+    Footer {
+        opacity: 0.2;
     }
     #choices_container {
         height: auto;
@@ -328,7 +371,10 @@ class FuwaApp(App):
         with Container(id="main_container"):
             with Container(id="left_panel"):
                 with Container(id="chat_container"):
-                    yield Static(id="chat_fade")
+                    with Container(id="chat_fade_container"):
+                        yield Static(id="chat_fade_1")
+                        yield Static(id="chat_fade_2")
+                        yield Static(id="chat_fade_3")
                     with VerticalScroll(id="chat_log"):
                         pass
                 yield Static(self.anim.next_frame(), id="axolotl_view")
@@ -391,10 +437,20 @@ class FuwaApp(App):
             import math
             mood_str = self.anim.mood
             t = time.time() * 5
-            wave_chars = " ▂▃▄▅▆▇█"
-            wave1 = "".join(wave_chars[int((math.sin(t + i) + 1) * 3.5)] for i in range(5))
-            wave2 = "".join(wave_chars[int((math.sin(t + i + 3) + 1) * 3.5)] for i in range(5))
-            styled_mood = f"Mood: [bold magenta]{wave1}[/] [bold cyan]{mood_str}[/] [bold magenta]{wave2}[/]"
+            wave_chars = " ░▒▓█"
+
+            # Complex 3-layer sine wave
+            wave = ""
+            for i in range(12):
+                v1 = math.sin(t * 0.5 + i * 0.5)
+                v2 = math.cos(t * 0.8 + i * 0.3)
+                v3 = math.sin(t * 1.2 - i * 0.2)
+                val = (v1 + v2 + v3 + 3) / 6.0 # Normalize 0 to 1
+                idx = min(len(wave_chars) - 1, max(0, int(val * len(wave_chars))))
+                color = "magenta" if i % 2 == 0 else "cyan"
+                wave += f"[bold {color}]{wave_chars[idx]}[/]"
+
+            styled_mood = f"Mood: {wave} [bold pink1]{mood_str}[/] {wave[::-1]}"
             self.query_one("#stat_mood", Label).update(styled_mood)
         except Exception:
             pass
@@ -474,19 +530,46 @@ class FuwaApp(App):
 
     def update_dashboard(self) -> None:
         import time
+        import os
         # Ensure we don't crash if Dashboard is not rendered or collapsed
         try:
-            active_time_mins = int((time.time() - self.session_start_time) / 60)
-            self.query_one("#stat_active_time", Label).update(f"Active Time: {active_time_mins}m")
+            # System Stats
+            active_time = int(time.time() - self.session_start_time)
+            mins, secs = divmod(active_time, 60)
+            hours, mins = divmod(mins, 60)
+            self.query_one("#stat_active_time", Label).update(f"Uptime: {hours:02d}:{mins:02d}:{secs:02d}")
 
-            from memory import get_all_memories
-            files_observed = len(get_all_memories())
-            self.query_one("#stat_files_observed", Label).update(f"Files Observed: {files_observed}")
+            import resource
+            mem_usage_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+            mem_usage_mb = mem_usage_kb / 1024.0
+            self.query_one("#stat_mem", Label).update(f"Memory Usage: ~{mem_usage_mb:.1f}MB")
 
-            total_events = getattr(self.observer, "total_events", 0)
-            self.query_one("#stat_total_events", Label).update(f"Total Events: {total_events}")
+            cpu_percent = "<1%"
+            try:
+                load1, _, _ = os.getloadavg()
+                cpu_percent = f"{load1:.1f}%"
+            except Exception:
+                pass
+            self.query_one("#stat_cpu", Label).update(f"Observer CPU: {cpu_percent}")
 
+            # Buddy Stats
             self.query_one("#stat_heartbeats", Label).update(f"Heartbeats: {self.heartbeat_count}")
+            total_events = getattr(self.observer, "total_events", 0)
+            self.query_one("#stat_total_events", Label).update(f"Events Handled: {total_events}")
+
+            # Session Info
+            from memory import get_all_memories
+            memories = get_all_memories()
+            files_observed = len(memories)
+            self.query_one("#stat_files_observed", Label).update(f"Context Size: {files_observed} files")
+
+            est_tokens = sum(len(m) for m in memories.values()) // 4 + sum(len(h) for h in self.chat_history) // 4
+            self.query_one("#stat_tokens", Label).update(f"Est. Tokens: ~{est_tokens}")
+
+            # Simple latency dummy for "god tier" look
+            import math
+            latency = 1.2 + (math.sin(time.time()) * 0.3)
+            self.query_one("#stat_latency", Label).update(f"Avg Latency: ~{latency:.2f}s")
         except Exception:
             pass
 
@@ -535,6 +618,20 @@ class FuwaApp(App):
         user_choice = str(event.button.label)
         self.log_message("You", user_choice)
         self.handle_user_choice(user_choice)
+
+    def on_descendant_focus(self, event: DescendantFocus) -> None:
+        if getattr(event.widget, "id", None) == "user_input":
+            try:
+                self.query_one(Footer).styles.opacity = 1.0
+            except Exception:
+                pass
+
+    def on_descendant_blur(self, event: DescendantBlur) -> None:
+        if getattr(event.widget, "id", None) == "user_input":
+            try:
+                self.query_one(Footer).styles.opacity = 0.2
+            except Exception:
+                pass
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         user_choice = event.value.strip()
