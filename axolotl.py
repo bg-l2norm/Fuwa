@@ -61,26 +61,6 @@ class AxolotlAnimation:
                     filepath = os.path.join(assets_dir, filename)
                     temp_frames[mood_str].append((frame_num, filepath, filename))
 
-        # Calculate global bounding box
-        global_min_x, global_min_y = float('inf'), float('inf')
-        global_max_x, global_max_y = 0, 0
-        has_valid_bounds = False
-
-        for mood_str, files in temp_frames.items():
-            for _, filepath, _ in files:
-                bounds = get_content_bounds(filepath)
-                if bounds:
-                    min_x, min_y, max_x, max_y = bounds
-                    global_min_x = min(global_min_x, min_x)
-                    global_min_y = min(global_min_y, min_y)
-                    global_max_x = max(global_max_x, max_x)
-                    global_max_y = max(global_max_y, max_y)
-                    has_valid_bounds = True
-
-        crop_box = None
-        if has_valid_bounds:
-            crop_box = (global_min_x, global_min_y, global_max_x, global_max_y)
-
         import hashlib
 
         # Check if we need to generate any frames first to determine if we should show progress
@@ -113,7 +93,27 @@ class AxolotlAnimation:
                 if generate:
                     needs_generation.append((filepath, sh_filepath, mood_str))
 
+        crop_box = None
         if needs_generation:
+            # Calculate global bounding box only if we need to generate
+            global_min_x, global_min_y = float('inf'), float('inf')
+            global_max_x, global_max_y = 0, 0
+            has_valid_bounds = False
+
+            for mood_str, files in temp_frames.items():
+                for _, filepath, _ in files:
+                    bounds = get_content_bounds(filepath)
+                    if bounds:
+                        min_x, min_y, max_x, max_y = bounds
+                        global_min_x = min(global_min_x, min_x)
+                        global_min_y = min(global_min_y, min_y)
+                        global_max_x = max(global_max_x, max_x)
+                        global_max_y = max(global_max_y, max_y)
+                        has_valid_bounds = True
+
+            if has_valid_bounds:
+                crop_box = (global_min_x, global_min_y, global_max_x, global_max_y)
+
             if not getattr(self, 'silent', False):
                 with Progress(
                     SpinnerColumn(spinner_name="dots"),

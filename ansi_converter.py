@@ -32,35 +32,67 @@ def _remove_background(img):
     width, height = img.size
     pixels = img.load()
     from collections import deque
-    visited = set()
-    queue = []
+
+    # Use bytearray instead of set for fast visited tracking
+    visited = bytearray(width * height)
+
+    valid_queue = deque()
+
+    def check_and_add(x, y):
+        idx = y * width + x
+        if not visited[idx]:
+            visited[idx] = 1
+            r, g, b, a = pixels[x, y]
+            if a == 0 or ((255 - r)**2 + (255 - g)**2 + (255 - b)**2 < 1000):
+                valid_queue.append((x, y))
 
     # Collect boundary pixels
     for x in range(width):
-        queue.extend([(x, 0), (x, height - 1)])
-    for y in range(height):
-        queue.extend([(0, y), (width - 1, y)])
-
-    valid_queue = deque()
-    for (x, y) in queue:
-        r, g, b, a = pixels[x, y]
-        if a == 0 or ((255 - r)**2 + (255 - g)**2 + (255 - b)**2 < 1000):
-            valid_queue.append((x, y))
-            visited.add((x, y))
+        check_and_add(x, 0)
+        check_and_add(x, height - 1)
+    for y in range(1, height - 1): # Skip corners as they are covered above
+        check_and_add(0, y)
+        check_and_add(width - 1, y)
 
     while valid_queue:
         x, y = valid_queue.popleft()
         r, g, b, a = pixels[x, y]
         pixels[x, y] = (r, g, b, 0)
 
-        for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < width and 0 <= ny < height:
-                if (nx, ny) not in visited:
-                    visited.add((nx, ny))
-                    nr, ng, nb, na = pixels[nx, ny]
-                    if na == 0 or ((255 - nr)**2 + (255 - ng)**2 + (255 - nb)**2 < 1000):
-                        valid_queue.append((nx, ny))
+        # Inline coordinate checks and visited check for speed
+        if x > 0:
+            nx, ny = x - 1, y
+            idx = ny * width + nx
+            if not visited[idx]:
+                visited[idx] = 1
+                nr, ng, nb, na = pixels[nx, ny]
+                if na == 0 or ((255 - nr)**2 + (255 - ng)**2 + (255 - nb)**2 < 1000):
+                    valid_queue.append((nx, ny))
+        if x < width - 1:
+            nx, ny = x + 1, y
+            idx = ny * width + nx
+            if not visited[idx]:
+                visited[idx] = 1
+                nr, ng, nb, na = pixels[nx, ny]
+                if na == 0 or ((255 - nr)**2 + (255 - ng)**2 + (255 - nb)**2 < 1000):
+                    valid_queue.append((nx, ny))
+        if y > 0:
+            nx, ny = x, y - 1
+            idx = ny * width + nx
+            if not visited[idx]:
+                visited[idx] = 1
+                nr, ng, nb, na = pixels[nx, ny]
+                if na == 0 or ((255 - nr)**2 + (255 - ng)**2 + (255 - nb)**2 < 1000):
+                    valid_queue.append((nx, ny))
+        if y < height - 1:
+            nx, ny = x, y + 1
+            idx = ny * width + nx
+            if not visited[idx]:
+                visited[idx] = 1
+                nr, ng, nb, na = pixels[nx, ny]
+                if na == 0 or ((255 - nr)**2 + (255 - ng)**2 + (255 - nb)**2 < 1000):
+                    valid_queue.append((nx, ny))
+
     return img
 
 def get_content_bounds(image_path):
