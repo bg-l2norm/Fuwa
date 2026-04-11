@@ -10,12 +10,15 @@ import subprocess
 from ansi_converter import convert_and_save_script, convert_image_to_ansi, get_content_bounds
 from PIL import Image, ImageDraw
 
+from rich.console import Console
+
 class AxolotlAnimation:
-    def __init__(self, buddy_size="normal"):
+    def __init__(self, buddy_size="normal", silent=False):
         self.frame_index = 0
         self.mood = "NORMAL"
         self.frames = {}
         self.buddy_size = buddy_size.lower()
+        self.silent = silent
         if self.buddy_size == "small":
             self.target_width = 14
         elif self.buddy_size == "large":
@@ -95,18 +98,29 @@ class AxolotlAnimation:
                     needs_generation.append((filepath, sh_filepath, mood_str))
 
         if needs_generation:
-            with Progress(
-                SpinnerColumn(spinner_name="dots"),
-                TextColumn("[bold cyan]Processing new animations... ({task.completed}/{task.total})[/bold cyan]"),
-                transient=True
-            ) as progress:
-                task = progress.add_task("converting", total=len(needs_generation))
+            if not getattr(self, 'silent', False):
+                with Progress(
+                    SpinnerColumn(spinner_name="dots"),
+                    TextColumn("[dim]Processing new animations... ({task.completed}/{task.total})[/dim]"),
+                    transient=True
+                ) as progress:
+                    task = progress.add_task("converting", total=len(needs_generation))
+                    for filepath, sh_filepath, mood_str in needs_generation:
+                        try:
+                            convert_and_save_script(filepath, sh_filepath, target_width=self.target_width, crop_box=crop_box)
+                        except Exception as e:
+                            print(f"Failed to convert {filepath}: {e}")
+                        progress.update(task, advance=1)
+            else:
                 for filepath, sh_filepath, mood_str in needs_generation:
                     try:
                         convert_and_save_script(filepath, sh_filepath, target_width=self.target_width, crop_box=crop_box)
                     except Exception as e:
                         print(f"Failed to convert {filepath}: {e}")
-                    progress.update(task, advance=1)
+        else:
+            if not getattr(self, 'silent', False):
+                console = Console()
+                console.print("[dim]Loading cached buddy renders...[/dim]")
 
         # Load frames
         for mood_str, files in temp_frames.items():
