@@ -6,7 +6,7 @@ from textual.widgets import Static
 from rich.text import Text
 import base64
 import subprocess
-from ansi_converter import convert_and_save_script, convert_image_to_ansi
+from ansi_converter import convert_and_save_script, convert_image_to_ansi, get_content_bounds
 from PIL import Image, ImageDraw
 
 class AxolotlAnimation:
@@ -16,11 +16,11 @@ class AxolotlAnimation:
         self.frames = {}
         self.buddy_size = buddy_size.lower()
         if self.buddy_size == "small":
-            self.target_width = 18
+            self.target_width = 14
         elif self.buddy_size == "large":
-            self.target_width = 40
+            self.target_width = 32
         else:
-            self.target_width = 28
+            self.target_width = 22
         self._load_assets()
 
     @staticmethod
@@ -57,12 +57,32 @@ class AxolotlAnimation:
                     filepath = os.path.join(assets_dir, filename)
                     temp_frames[mood_str].append((frame_num, filepath, filename))
 
+        # Calculate global bounding box
+        global_min_x, global_min_y = float('inf'), float('inf')
+        global_max_x, global_max_y = 0, 0
+        has_valid_bounds = False
+
+        for mood_str, files in temp_frames.items():
+            for _, filepath, _ in files:
+                bounds = get_content_bounds(filepath)
+                if bounds:
+                    min_x, min_y, max_x, max_y = bounds
+                    global_min_x = min(global_min_x, min_x)
+                    global_min_y = min(global_min_y, min_y)
+                    global_max_x = max(global_max_x, max_x)
+                    global_max_y = max(global_max_y, max_y)
+                    has_valid_bounds = True
+
+        crop_box = None
+        if has_valid_bounds:
+            crop_box = (global_min_x, global_min_y, global_max_x, global_max_y)
+
         # Load and sort frames
         for mood_str, files in temp_frames.items():
             files.sort(key=lambda x: x[0])
             for _, filepath, filename in files:
                 try:
-                    sh_filename = filename.replace(".png", f"_{self.target_width}.sh")
+                    sh_filename = filename.replace(".png", f"_{self.target_width}_cropped.sh")
                     sh_filepath = os.path.join(ansi_dir, sh_filename)
 
                     # Check if sh script needs to be generated
@@ -73,7 +93,7 @@ class AxolotlAnimation:
                         generate = True
 
                     if generate:
-                        convert_and_save_script(filepath, sh_filepath, target_width=self.target_width)
+                        convert_and_save_script(filepath, sh_filepath, target_width=self.target_width, crop_box=crop_box)
 
                     # Read the generated bash script
                     if os.path.exists(sh_filepath):

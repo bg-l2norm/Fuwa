@@ -1,16 +1,78 @@
 from textual.app import App, ComposeResult
 from textual.containers import Container, Vertical, Horizontal
-from textual.widgets import Header, Footer, Static, Input, Button, Log, Label
+from textual.widgets import Header, Footer, Static, Input, Button, Log, Label, RichLog
 
 import re
 from textual import work
 
 import os
 from axolotl import AxolotlAnimation
-from config import load_config
+from config import load_config, update_config, CONFIG_FILE
 from observer import FileSystemObserver
 from llm import generate_comment, generate_choices, process_interaction, summarize_file
 from memory import update_memory, get_all_memories
+
+
+def do_first_run_setup():
+    import os
+    import time
+    from rich.console import Console
+    from rich.prompt import Prompt
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+    from config import DEFAULT_CONFIG, CONFIG_FILE
+
+    console = Console()
+
+    # Determine if we need to run setup
+    needs_setup = False
+    if not os.path.exists(CONFIG_FILE):
+        needs_setup = True
+    else:
+        # Check if API key is empty
+        try:
+            with open(CONFIG_FILE, 'r') as f:
+                import json
+                data = json.load(f)
+                if not data.get("api_key") or data.get("api_key") == "YOUR_API_KEY_HERE":
+                    needs_setup = True
+        except:
+            needs_setup = True
+
+    if needs_setup:
+        console.clear()
+        console.print("[bold magenta]🌸 Welcome to Fuwa! 🌸[/bold magenta]\n")
+        console.print("Let's set up your terminal buddy.\n")
+
+        provider = Prompt.ask("Choose your LLM provider", choices=["openai", "anthropic", "openrouter"], default="openai")
+
+        default_model = "gpt-4o-mini"
+        if provider == "anthropic":
+            default_model = "claude-3-haiku-20240307"
+        elif provider == "openrouter":
+            default_model = "openrouter/auto"
+
+        model = Prompt.ask("Choose your model", default=default_model)
+        api_key = Prompt.ask("Enter your API key (will be saved in config.json)", password=True)
+
+        config_data = DEFAULT_CONFIG.copy()
+        config_data["provider"] = provider
+        config_data["model"] = model
+        config_data["api_key"] = api_key
+
+        with open(CONFIG_FILE, "w") as f:
+            import json
+            json.dump(config_data, f, indent=4)
+
+        console.print("\n[bold green]✅ Setup complete![/bold green]\n")
+
+        # Aesthetic loader
+        with Progress(
+            SpinnerColumn(spinner_name="dots"),
+            TextColumn("[bold cyan]Waking up Fuwa...[/bold cyan]"),
+            transient=True
+        ) as progress:
+            progress.add_task("waking", total=None)
+            time.sleep(2.0)
 
 class FuwaApp(App):
     BINDINGS = [
@@ -46,6 +108,10 @@ class FuwaApp(App):
         height: 1fr;
         border-bottom: dashed $secondary;
     }
+    #rich_log {
+        height: 1fr;
+        border-bottom: dashed $secondary;
+    }
     #choices_container {
         height: auto;
         layout: vertical;
@@ -74,7 +140,7 @@ class FuwaApp(App):
             with Container(id="left_panel"):
                 yield Static(self.anim.next_frame(), id="axolotl_view")
             with Container(id="right_panel"):
-                yield Log(id="chat_log", highlight=True)
+                yield RichLog(id="chat_log", markup=True)
                 with Container(id="choices_container"):
                     yield Button("Loading choices...", id="btn_0", classes="choice_btn", disabled=True)
                     yield Button("...", id="btn_1", classes="choice_btn", disabled=True)
@@ -84,7 +150,7 @@ class FuwaApp(App):
 
     def on_mount(self) -> None:
         self.axolotl_view = self.query_one("#axolotl_view", Static)
-        self.chat_log_view = self.query_one("#chat_log", Log)
+        self.chat_log_view = self.query_one("#chat_log", RichLog)
         self.choice_btns = [self.query_one(f"#btn_{i}", Button) for i in range(3)]
         self.user_input = self.query_one("#user_input", Input)
 
@@ -103,7 +169,7 @@ class FuwaApp(App):
 
     def log_message(self, sender: str, message: str) -> None:
         formatted = f"[bold cyan]{sender}[/]: {message}"
-        self.chat_log_view.write_line(formatted)
+        self.chat_log_view.write(formatted)
         self.chat_history.append(f"{sender}: {message}")
         # Keep history manageable
         if len(self.chat_history) > 20:
@@ -208,5 +274,6 @@ class FuwaApp(App):
         self.call_from_thread(self.update_choices, choices)
 
 if __name__ == "__main__":
+    do_first_run_setup()
     app = FuwaApp()
     app.run()
