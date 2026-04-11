@@ -173,7 +173,7 @@ class FuwaApp(App):
     def __init__(self):
         super().__init__()
         self.config = load_config()
-        self.anim = AxolotlAnimation(buddy_size=self.config.get("buddy_size", "normal"))
+        self.anim = AxolotlAnimation(buddy_size=self.config.get("buddy_size", "normal"), silent=False)
         self.chat_history = []
         self.observer = FileSystemObserver(self.config.get("watch_folders", ["."]))
         self.heartbeat_timer = None
@@ -306,7 +306,7 @@ class FuwaApp(App):
 
         # Disable animation timer temporarily to prevent race conditions
         old_mood = self.anim.mood
-        self.anim = AxolotlAnimation(buddy_size=new_size)
+        self.anim = AxolotlAnimation(buddy_size=new_size, silent=True)
         self.anim.set_mood(old_mood) # Ensure mood carries over
         self.log_message("System", f"Buddy size changed to [bold yellow]{new_size}[/].")
         self.update_animation()
