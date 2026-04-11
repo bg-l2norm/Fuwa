@@ -125,6 +125,7 @@ class FuwaApp(App):
         ("1", "select_choice(1)", "Choice 1"),
         ("2", "select_choice(2)", "Choice 2"),
         ("3", "select_choice(3)", "Choice 3"),
+        ("s", "toggle_size", "Change Buddy Size"),
     ]
 
     CSS = """
@@ -288,6 +289,27 @@ class FuwaApp(App):
                 user_choice = str(btn.label)
                 self.log_message("You", user_choice)
                 self.handle_user_choice(user_choice)
+
+    def action_toggle_size(self) -> None:
+        sizes = ["small", "normal", "large"]
+        current = self.config.get("buddy_size", "normal").lower()
+        if current in sizes:
+            idx = sizes.index(current)
+            new_size = sizes[(idx + 1) % len(sizes)]
+        else:
+            new_size = "normal"
+
+        self.config["buddy_size"] = new_size
+
+        from config import save_config
+        save_config(self.config)
+
+        # Disable animation timer temporarily to prevent race conditions
+        old_mood = self.anim.mood
+        self.anim = AxolotlAnimation(buddy_size=new_size)
+        self.anim.set_mood(old_mood) # Ensure mood carries over
+        self.log_message("System", f"Buddy size changed to [bold yellow]{new_size}[/].")
+        self.update_animation()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         user_choice = str(event.button.label)

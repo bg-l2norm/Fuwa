@@ -71,7 +71,12 @@ def get_content_bounds(image_path):
         return None
 
     img = _remove_background(img)
-    return img.getbbox()
+    bbox = img.getbbox()
+    if bbox:
+        w, h = img.size
+        # return normalized bounds (min_x, min_y, max_x, max_y)
+        return (bbox[0]/w, bbox[1]/h, bbox[2]/w, bbox[3]/h)
+    return None
 
 def convert_image_to_ansi(image_path, target_width=40, crop_box=None):
     """
@@ -88,7 +93,15 @@ def convert_image_to_ansi(image_path, target_width=40, crop_box=None):
 
     # Apply crop box
     if crop_box:
-        img = img.crop(crop_box)
+        w, h = img.size
+        # crop_box is normalized
+        real_crop_box = (
+            int(crop_box[0] * w),
+            int(crop_box[1] * h),
+            int(crop_box[2] * w),
+            int(crop_box[3] * h)
+        )
+        img = img.crop(real_crop_box)
     else:
         bbox = img.getbbox()
         if bbox:

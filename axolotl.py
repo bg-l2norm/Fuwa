@@ -1,3 +1,4 @@
+from rich.progress import Progress, SpinnerColumn, TextColumn
 import os
 import re
 from collections import defaultdict
@@ -77,30 +78,46 @@ class AxolotlAnimation:
         if has_valid_bounds:
             crop_box = (global_min_x, global_min_y, global_max_x, global_max_y)
 
-        # Load and sort frames
+        # Check if we need to generate any frames first to determine if we should show progress
+        needs_generation = []
         for mood_str, files in temp_frames.items():
             files.sort(key=lambda x: x[0])
+            for _, filepath, filename in files:
+                sh_filename = filename.replace(".png", f"_{self.target_width}_cropped.sh")
+                sh_filepath = os.path.join(ansi_dir, sh_filename)
+                generate = False
+                if not os.path.exists(sh_filepath):
+                    generate = True
+                elif os.path.getmtime(sh_filepath) < os.path.getmtime(filepath):
+                    generate = True
+
+                if generate:
+                    needs_generation.append((filepath, sh_filepath, mood_str))
+
+        if needs_generation:
+            with Progress(
+                SpinnerColumn(spinner_name="dots"),
+                TextColumn("[bold cyan]Processing new animations... ({task.completed}/{task.total})[/bold cyan]"),
+                transient=True
+            ) as progress:
+                task = progress.add_task("converting", total=len(needs_generation))
+                for filepath, sh_filepath, mood_str in needs_generation:
+                    try:
+                        convert_and_save_script(filepath, sh_filepath, target_width=self.target_width, crop_box=crop_box)
+                    except Exception as e:
+                        print(f"Failed to convert {filepath}: {e}")
+                    progress.update(task, advance=1)
+
+        # Load frames
+        for mood_str, files in temp_frames.items():
             for _, filepath, filename in files:
                 try:
                     sh_filename = filename.replace(".png", f"_{self.target_width}_cropped.sh")
                     sh_filepath = os.path.join(ansi_dir, sh_filename)
-
-                    # Check if sh script needs to be generated
-                    generate = False
-                    if not os.path.exists(sh_filepath):
-                        generate = True
-                    elif os.path.getmtime(sh_filepath) < os.path.getmtime(filepath):
-                        generate = True
-
-                    if generate:
-                        convert_and_save_script(filepath, sh_filepath, target_width=self.target_width, crop_box=crop_box)
-
-                    # Read the generated bash script
                     if os.path.exists(sh_filepath):
                         with open(sh_filepath, "r", encoding="utf-8") as f:
                             lines = f.readlines()
                             if len(lines) >= 2 and "base64" in lines[1]:
-                                # Extract base64 part
                                 b64_str = lines[1].split('echo "')[1].split('" | base64')[0]
                                 ansi_str = base64.b64decode(b64_str).decode('utf-8')
                                 self.frames[mood_str].append(Text.from_ansi(ansi_str))
