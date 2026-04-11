@@ -1,5 +1,7 @@
 import pytest
-from textual.widgets import Button, RichLog
+from textual.widgets import Button
+from textual.containers import VerticalScroll
+from textual.widgets import Static
 from fuwa import FuwaApp
 
 @pytest.mark.asyncio
@@ -15,8 +17,9 @@ async def test_fuwa_app_startup():
 
         # Test chat log appending
         app.log_message("Test", "Hello World")
-        log_view = app.query_one("#chat_log", RichLog)
-        assert "Hello World" in "\n".join([line.text for line in log_view.lines])
+        log_view = app.query_one("#chat_log", VerticalScroll)
+        assert len(log_view.query(Static)) > 0
+        assert any("Hello World" in msg for msg in app.chat_history)
 
         # Test choice updating
         app.update_choices(["A", "B"])
