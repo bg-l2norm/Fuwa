@@ -8,7 +8,6 @@ DEFAULT_CONFIG = {
     "watch_folders": ["."],
     "provider": "openai",
     "model": "gpt-4o-mini",
-    "api_key": "",
     "buddy_size": "normal",
     "personality": "You are Fuwa, a cute, slightly sarcastic, and extremely motivating axolotl terminal companion. You observe the user's coding folders and make comments. If they slack off, make them feel guilty. If they work hard, praise them. Your comments should be short (1-2 sentences)."
 }
@@ -41,8 +40,12 @@ def load_config():
 def save_config(config):
     global _cached_config
     try:
-        with open(CONFIG_FILE, "w") as f:
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        mode = 0o600
+        fd = os.open(CONFIG_FILE, flags, mode)
+        with os.fdopen(fd, "w") as f:
             json.dump(config, f, indent=4)
+        os.chmod(CONFIG_FILE, 0o600)  # Ensure permissions are set correctly even if file existed
         _cached_config = config
     except Exception as e:
         print(f"Error saving config: {e}")

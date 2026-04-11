@@ -59,9 +59,13 @@ def do_first_run_setup():
         config_data["model"] = model
         config_data["api_key"] = api_key
 
-        with open(CONFIG_FILE, "w") as f:
-            import json
+        import json
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        mode = 0o600
+        fd = os.open(CONFIG_FILE, flags, mode)
+        with os.fdopen(fd, "w") as f:
             json.dump(config_data, f, indent=4)
+        os.chmod(CONFIG_FILE, 0o600)  # Ensure permissions are set correctly
 
         console.print("\n[bold green]✅ Setup complete![/bold green]\n")
 

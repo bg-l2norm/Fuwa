@@ -21,8 +21,8 @@ def do_install():
         ) as progress:
             task = progress.add_task("[cyan]Installing dependencies...", total=None)
 
-            cmd = f'"{sys.executable}" -m pip install -r requirements.txt'
-            process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            cmd = [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"]
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
             stdout_data = ""
             for line in iter(process.stdout.readline, ''):
@@ -50,9 +50,14 @@ def do_install():
 def do_update():
     if os.path.exists(".git"):
         console.print("[cyan]⬇️ Pulling latest changes from git...[/cyan]")
-        process = subprocess.run("git fetch origin main && git merge FETCH_HEAD", shell=True, capture_output=True, text=True)
-        if process.returncode != 0:
-            console.print(Panel(f"[bold red]❌ Error: git merge failed. Please resolve conflicts manually.[/bold red]\n\n{process.stderr}", title="Error", style="red"))
+        fetch_process = subprocess.run(["git", "fetch", "origin", "main"], capture_output=True, text=True)
+        if fetch_process.returncode == 0:
+            process = subprocess.run(["git", "merge", "FETCH_HEAD"], capture_output=True, text=True)
+            if process.returncode != 0:
+                console.print(Panel(f"[bold red]❌ Error: git merge failed. Please resolve conflicts manually.[/bold red]\n\n{process.stderr}", title="Error", style="red"))
+                sys.exit(1)
+        else:
+            console.print(Panel(f"[bold red]❌ Error: git fetch failed.[/bold red]\n\n{fetch_process.stderr}", title="Error", style="red"))
             sys.exit(1)
 
     if not os.path.exists("requirements.txt"):
@@ -71,8 +76,8 @@ def do_update():
         ) as progress:
             task = progress.add_task("[cyan]Updating dependencies...", total=None)
 
-            cmd = f'"{sys.executable}" -m pip install -r requirements.txt'
-            process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            cmd = [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"]
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
             stdout_data = ""
             for line in iter(process.stdout.readline, ''):
@@ -106,10 +111,11 @@ def do_doctor():
 
         if os.path.exists("venv"):
             console.print("🔧 Fixing: Removing invalid 'venv'...")
-            subprocess.run("rm -rf venv", shell=True)
+            import shutil
+            shutil.rmtree("venv", ignore_errors=True)
 
         console.print("🔧 Fixing: Creating virtual environment...")
-        process = subprocess.run(f'"{sys.executable}" -m venv venv', shell=True)
+        process = subprocess.run([sys.executable, "-m", "venv", "venv"])
         if process.returncode == 0:
             console.print("[bold green]✅ Fixed: Virtual environment created.[/bold green]")
             issues_fixed += 1
@@ -124,14 +130,14 @@ def do_doctor():
             # We don't want to use subprocess run to import since textual might fail if missing.
             # However, we can just run a python script inside the venv to check imports
             check_script = "import textual, rich, watchdog, PIL"
-            process = subprocess.run(f"source venv/bin/activate && python -c '{check_script}'", shell=True, executable='/bin/bash', capture_output=True)
+            process = subprocess.run(["venv/bin/python", "-c", check_script], capture_output=True)
 
             if process.returncode != 0 or not os.path.exists("venv/.fuwa_installed"):
                 console.print("[bold yellow]⚠️ Issue: Missing dependencies or incomplete installation.[/bold yellow]")
                 issues_found += 1
                 console.print("🔧 Fixing: Installing dependencies...")
                 if os.path.exists("requirements.txt"):
-                    pip_proc = subprocess.run("source venv/bin/activate && pip install -r requirements.txt", shell=True, executable='/bin/bash', capture_output=True)
+                    pip_proc = subprocess.run(["venv/bin/pip", "install", "-r", "requirements.txt"], capture_output=True)
                     if pip_proc.returncode == 0:
                         with open("venv/.fuwa_installed", "w") as f:
                             f.write("installed")
@@ -154,7 +160,7 @@ def do_doctor():
         issues_found += 1
         console.print("🔧 Fixing: Generating config.json...")
         if os.path.exists("venv/bin/activate"):
-             process = subprocess.run("source venv/bin/activate && python -c 'import config; config.load_config()'", shell=True, executable='/bin/bash', capture_output=True)
+             process = subprocess.run(["venv/bin/python", "-c", "import config; config.load_config()"], capture_output=True)
              if process.returncode == 0:
                  console.print("[bold green]✅ Fixed: config.json generated.[/bold green]")
                  issues_fixed += 1
@@ -162,7 +168,7 @@ def do_doctor():
                  console.print("[bold red]❌ Error: Failed to generate config.json.[/bold red]")
         else:
              # Just fallback to current env
-             process = subprocess.run("python -c 'import config; config.load_config()'", shell=True, capture_output=True)
+             process = subprocess.run([sys.executable, "-c", "import config; config.load_config()"], capture_output=True)
              if process.returncode == 0:
                  console.print("[bold green]✅ Fixed: config.json generated.[/bold green]")
                  issues_fixed += 1
