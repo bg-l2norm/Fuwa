@@ -17,7 +17,7 @@ def do_first_run_setup():
     import os
     import time
     from rich.console import Console
-    from rich.prompt import Prompt
+    from rich.prompt import Prompt, IntPrompt
     from rich.progress import Progress, SpinnerColumn, TextColumn
     from config import DEFAULT_CONFIG, CONFIG_FILE
 
@@ -43,16 +43,58 @@ def do_first_run_setup():
         console.print("[bold magenta]🌸 Welcome to Fuwa! 🌸[/bold magenta]\n")
         console.print("Let's set up your terminal buddy.\n")
 
-        provider = Prompt.ask("Choose your LLM provider", choices=["openai", "anthropic", "openrouter"], default="openai")
+        console.print("1) OpenAI")
+        console.print("2) Anthropic")
+        console.print("3) OpenRouter")
 
+        while True:
+            provider_choice_str = Prompt.ask("Choose your LLM provider by number", choices=["1", "2", "3"], default="1")
+            try:
+                provider_choice = int(provider_choice_str)
+                break
+            except ValueError:
+                console.print("[bold red]Please enter a valid integer number[/bold red]")
+
+        provider = "openai"
         default_model = "gpt-4o-mini"
-        if provider == "anthropic":
+        if provider_choice == 2:
+            provider = "anthropic"
             default_model = "claude-3-haiku-20240307"
-        elif provider == "openrouter":
+        elif provider_choice == 3:
+            provider = "openrouter"
             default_model = "openrouter/auto"
 
-        model = Prompt.ask("Choose your model", default=default_model)
-        api_key = Prompt.ask("Enter your API key (will be saved in config.json)", password=True)
+        if provider == "openai":
+            console.print("\n[bold cyan]Available Models:[/bold cyan]")
+            console.print("1) gpt-4o-mini (default, fastest)")
+            console.print("2) gpt-4o")
+            console.print("3) gpt-3.5-turbo")
+            console.print("4) Custom (type it)")
+            model_choice = Prompt.ask("Choose model by number", choices=["1", "2", "3", "4"], default="1")
+            if model_choice == "1": model = "gpt-4o-mini"
+            elif model_choice == "2": model = "gpt-4o"
+            elif model_choice == "3": model = "gpt-3.5-turbo"
+            else: model = Prompt.ask("Enter custom model name")
+        elif provider == "anthropic":
+            console.print("\n[bold cyan]Available Models:[/bold cyan]")
+            console.print("1) claude-3-haiku-20240307 (default, fastest)")
+            console.print("2) claude-3-sonnet-20240229")
+            console.print("3) claude-3-opus-20240229")
+            console.print("4) Custom (type it)")
+            model_choice = Prompt.ask("Choose model by number", choices=["1", "2", "3", "4"], default="1")
+            if model_choice == "1": model = "claude-3-haiku-20240307"
+            elif model_choice == "2": model = "claude-3-sonnet-20240229"
+            elif model_choice == "3": model = "claude-3-opus-20240229"
+            else: model = Prompt.ask("Enter custom model name")
+        else:
+            model = Prompt.ask("Choose your model", default=default_model)
+
+        while True:
+            api_key = Prompt.ask("Enter your API key (will be saved in config.json)", password=True).strip()
+            if not api_key:
+                console.print("[bold red]❌ Error: API key cannot be empty. Please try again.[/bold red]")
+            else:
+                break
 
         config_data = DEFAULT_CONFIG.copy()
         config_data["provider"] = provider
