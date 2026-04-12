@@ -3,8 +3,7 @@ import os
 import urllib.request
 import re
 import urllib.error
-from config import load_config
-from axolotl import AxolotlAnimation
+from infrastructure.config import load_config
 
 def _get_api_kwargs():
     config = load_config()
@@ -163,11 +162,10 @@ def summarize_files_batch(files_data: list[dict]) -> dict:
         print(f"Error summarizing files batch: {e}")
         return {}
 
-def generate_comment(observations: str, personality: str, file_memories: str = "") -> str:
+def generate_comment(observations: str, personality: str, available_moods: list[str], file_memories: str = "") -> str:
     """Generates a blurt from the axolotl based on recent observations and memories."""
     kwargs = _get_api_kwargs()
 
-    available_moods = AxolotlAnimation.get_available_moods()
     moods_str = ", ".join(f"[MOOD: {m}]" for m in available_moods)
 
     system_prompt = (
@@ -273,14 +271,13 @@ def generate_choices(recent_context: str, personality: str) -> list[str]:
         print(f"Error generating choices: {e}")
         return ["*Stare blankly*", "*Go back to work*", "*Poke axolotl*"]
 
-def process_interaction(interaction: str, recent_context: str, personality: str, is_startup: bool = False) -> str:
+def process_interaction(interaction: str, recent_context: str, personality: str, available_moods: list[str], is_startup: bool = False) -> str:
     """Processes user interaction and generates axolotl's response, potentially updating personality."""
     kwargs = _get_api_kwargs()
-    from config import update_config
+    from infrastructure.config import update_config
     import subprocess
-    from memory import update_memory
+    from infrastructure.memory import update_memory
 
-    available_moods = AxolotlAnimation.get_available_moods()
     moods_str = ", ".join(f"[MOOD: {m}]" for m in available_moods)
 
     system_prompt = (

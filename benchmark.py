@@ -1,5 +1,5 @@
 import time
-from config import load_config
+from infrastructure.config import load_config
 
 start = time.perf_counter()
 for _ in range(10000):

@@ -1,333 +1,24 @@
+import os
+import re
+import time
+import collections
 from textual.app import App, ComposeResult
 from textual.containers import Container, Vertical, Horizontal, VerticalScroll
 from textual.widgets import Header, Footer, Static, Input, Button, Log, Label, RichLog
-from textual.screen import ModalScreen
 from textual.events import DescendantFocus, DescendantBlur
-
-import re
 from textual import work
 
-class Dashboard(Container):
-    def compose(self) -> ComposeResult:
-        yield Label("🌸 Fuwa's Dashboard 🌸", id="dashboard_title")
-        with Horizontal():
-            with Vertical(classes="dash_col", id="dash_buddy") as v:
-                v.border_title = "🐾 Buddy Stats"
-                yield Label("Mood: NORMAL", id="stat_mood")
-                yield Label("Heartbeats: 0", id="stat_heartbeats")
-                yield Label("Events Handled: 0", id="stat_total_events")
-        with Horizontal(id="dash_row2"):
-            with Vertical(classes="dash_col") as v:
-                v.border_title = "🧠 Session Info"
-                yield Label("Est. Tokens: ~0", id="stat_tokens")
-                yield Label("Context Size: 0 files", id="stat_files_observed")
-                yield Label("Avg Latency: ~1.2s", id="stat_latency")
-            with Vertical(classes="dash_col", id="dash_sys") as v:
-                v.border_title = "💻 System Stats"
-                yield Label("Uptime: 00:00:00", id="stat_active_time")
-                yield Label("Memory Usage: ~124MB", id="stat_mem")
-                yield Label("Observer CPU: <1%", id="stat_cpu")
+from infrastructure.config import load_config, save_config, CONFIG_FILE
+from infrastructure.llm import generate_comment, generate_choices, process_interaction, summarize_paths_batch, summarize_files_batch
+from infrastructure.memory import update_memory, get_all_memories, search_memory
 
-import os
-from axolotl import AxolotlAnimation
-from config import load_config, update_config, CONFIG_FILE
-from observer import FileSystemObserver
-from llm import generate_comment, generate_choices, process_interaction, summarize_paths_batch, summarize_files_batch
-from memory import update_memory, get_all_memories
-
-
-def do_first_run_setup(force_setup=False):
-    import os
-    import time
-    from rich.console import Console
-    from rich.prompt import Prompt, IntPrompt
-    from rich.progress import Progress, SpinnerColumn, TextColumn
-    from config import DEFAULT_CONFIG, CONFIG_FILE, load_config
-
-    console = Console()
-
-    # Determine if we need to run setup
-    needs_setup = force_setup
-    if not os.path.exists(CONFIG_FILE):
-        needs_setup = True
-    else:
-        # Check if API key is empty
-        try:
-            with open(CONFIG_FILE, 'r') as f:
-                import json
-                data = json.load(f)
-                if not data.get("api_key") or data.get("api_key") == "YOUR_API_KEY_HERE":
-                    needs_setup = True
-        except:
-            needs_setup = True
-
-    if needs_setup:
-        config_data = DEFAULT_CONFIG.copy()
-        if os.path.exists(CONFIG_FILE):
-            try:
-                config_data = load_config()
-            except Exception:
-                pass
-
-        change_api = True
-        change_folders = True
-
-        if force_setup and os.path.exists(CONFIG_FILE):
-            console.print("[bold cyan]What would you like to configure?[/bold cyan]")
-            console.print("1) Everything")
-            console.print("2) API & Provider only")
-            console.print("3) Watch Folders only")
-            choice = Prompt.ask("Choose an option by number", choices=["1", "2", "3"], default="1")
-
-            if choice == "2":
-                change_folders = False
-            elif choice == "3":
-                change_api = False
-
-        console.clear()
-        if not force_setup:
-            console.print("[bold magenta]🌸 Welcome to Fuwa! 🌸[/bold magenta]\n")
-            console.print("Let's set up your terminal buddy.\n")
-        else:
-            console.print("[bold magenta]🌸 Fuwa Configuration 🌸[/bold magenta]\n")
-
-        if change_api:
-            console.print("1) OpenAI")
-            console.print("2) Anthropic")
-            console.print("3) OpenRouter")
-
-            while True:
-                provider_choice_str = Prompt.ask("Choose your LLM provider by number", choices=["1", "2", "3"], default="1")
-                try:
-                    provider_choice = int(provider_choice_str)
-                    break
-                except ValueError:
-                    console.print("[bold red]Please enter a valid integer number[/bold red]")
-
-            provider = "openai"
-            default_model = "gpt-4o-mini"
-            if provider_choice == 2:
-                provider = "anthropic"
-                default_model = "claude-3-haiku-20240307"
-            elif provider_choice == 3:
-                provider = "openrouter"
-                default_model = "openrouter/auto"
-
-            if provider == "openai":
-                console.print("\n[bold cyan]Available Models:[/bold cyan]")
-                console.print("1) gpt-4o-mini (default, fastest)")
-                console.print("2) gpt-4o")
-                console.print("3) gpt-3.5-turbo")
-                console.print("4) Custom (type it)")
-                model_choice = Prompt.ask("Choose model by number", choices=["1", "2", "3", "4"], default="1")
-                if model_choice == "1": model = "gpt-4o-mini"
-                elif model_choice == "2": model = "gpt-4o"
-                elif model_choice == "3": model = "gpt-3.5-turbo"
-                else: model = Prompt.ask("Enter custom model name")
-            elif provider == "anthropic":
-                console.print("\n[bold cyan]Available Models:[/bold cyan]")
-                console.print("1) claude-3-haiku-20240307 (default, fastest)")
-                console.print("2) claude-3-sonnet-20240229")
-                console.print("3) claude-3-opus-20240229")
-                console.print("4) Custom (type it)")
-                model_choice = Prompt.ask("Choose model by number", choices=["1", "2", "3", "4"], default="1")
-                if model_choice == "1": model = "claude-3-haiku-20240307"
-                elif model_choice == "2": model = "claude-3-sonnet-20240229"
-                elif model_choice == "3": model = "claude-3-opus-20240229"
-                else: model = Prompt.ask("Enter custom model name")
-            else:
-                model = Prompt.ask("Choose your model", default=default_model)
-
-            while True:
-                api_key = Prompt.ask("Enter your API key (will be saved in config.json)", password=True).strip()
-                if not api_key:
-                    console.print("[bold red]❌ Error: API key cannot be empty. Please try again.[/bold red]")
-                else:
-                    break
-
-            config_data["provider"] = provider
-            config_data["model"] = model
-            config_data["api_key"] = api_key
-
-        watch_folders = config_data.get("watch_folders", [os.path.expanduser('~')])
-        if change_folders:
-            home_dir = os.path.expanduser('~')
-            console.print("\n[bold cyan]Select directories to observe:[/bold cyan]")
-            console.print(f"1) Use home directory ({home_dir}) (default)")
-            console.print("2) Open GUI folder picker")
-            console.print("3) Type path manually")
-            dir_choice = Prompt.ask("Choose option by number", choices=["1", "2", "3"], default="1")
-
-            watch_folders_str = home_dir
-            if dir_choice == "2":
-                try:
-                    import tkinter as tk
-                    from tkinter import filedialog
-                    root = tk.Tk()
-                    root.withdraw()
-                    root.attributes('-topmost', True)
-                    folder = filedialog.askdirectory(title="Select directory to observe")
-                    root.destroy()
-                    if folder:
-                        watch_folders_str = folder
-                    else:
-                        console.print("[yellow]No folder selected, falling back to manual input.[/yellow]")
-                        watch_folders_str = Prompt.ask("Enter comma-separated directories to observe", default=home_dir)
-                except Exception as e:
-                    console.print(f"[yellow]GUI dialog failed ({e}), falling back to manual input.[/yellow]")
-                    watch_folders_str = Prompt.ask("Enter comma-separated directories to observe", default=home_dir)
-            elif dir_choice == "3":
-                watch_folders_str = Prompt.ask("Enter comma-separated directories to observe", default=home_dir)
-
-            watch_folders = [f.strip() for f in watch_folders_str.split(",") if f.strip()]
-            if not watch_folders:
-                watch_folders = [home_dir]
-
-            config_data["watch_folders"] = watch_folders
-
-        import json
-        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-        mode = 0o600
-        fd = os.open(CONFIG_FILE, flags, mode)
-        with os.fdopen(fd, "w") as f:
-            json.dump(config_data, f, indent=4)
-        os.chmod(CONFIG_FILE, 0o600)  # Ensure permissions are set correctly
-
-        console.print("\n[bold green]✅ Setup complete![/bold green]\n")
-
-        # Walk directories and generate basic initial memory to avoid LLM API costs on startup
-        console.print("[bold cyan]Scanning directories to understand your project...[/bold cyan]")
-
-        ignored_patterns = [
-            ".git", "__pycache__", "node_modules", "venv", ".venv",
-            "build", "dist", "target", ".idea", ".vscode", "memory.json", "config.json"
-        ]
-
-        def should_ignore(path_str):
-            return any(f"/{pat}/" in path_str or path_str.endswith(f"/{pat}") or path_str.startswith(f"{pat}/") or path_str == pat for pat in ignored_patterns)
-
-        with Progress(
-            SpinnerColumn(spinner_name="dots"),
-            TextColumn("[bold cyan]Analyzing project structure...[/bold cyan]"),
-            transient=True
-        ) as progress:
-            task = progress.add_task("scanning", total=None)
-
-            summaries = {}
-            for folder in watch_folders:
-                folder_path = os.path.abspath(folder)
-                if not os.path.isdir(folder_path):
-                    continue
-
-                for root, dirs, files in os.walk(folder_path):
-                    # Filter directories in-place
-                    dirs[:] = [d for d in dirs if not should_ignore(os.path.join(root, d))]
-
-                    for file in files:
-                        filepath = os.path.join(root, file)
-                        if should_ignore(filepath):
-                            continue
-
-                        try:
-                            # Use relative path if possible for the memory key
-                            rel_path = os.path.relpath(filepath, os.getcwd())
-                        except ValueError:
-                            rel_path = filepath
-
-                        summaries[rel_path] = f"File {rel_path} discovered during initial scan."
-
-            if summaries:
-                from memory import update_memories
-                update_memories(summaries)
-
-        console.print(f"[bold green]✅ Initial scan complete! Observed {len(summaries)} files.[/bold green]\n")
-
-        # Loading animation
-        with Progress(
-            SpinnerColumn(spinner_name="dots"),
-            TextColumn("[bold cyan]Waking up Fuwa...[/bold cyan]"),
-            transient=True
-        ) as progress:
-            task = progress.add_task("waking", total=10)
-            for _ in range(10):
-                time.sleep(0.1)
-                progress.update(task, advance=1)
-
-class SettingsModal(ModalScreen):
-    CSS = """
-    #settings_dialog {
-        width: 60%;
-        height: auto;
-        padding: 2;
-        border: round #ff69b4;
-        align: center middle;
-        background: $surface;
-    }
-    """
-
-    def compose(self) -> ComposeResult:
-        config = load_config()
-        with Vertical(id="settings_dialog"):
-            yield Label("Settings")
-            yield Label("Provider:")
-            yield Input(value=config.get("provider", "openai"), placeholder="Provider (e.g. openrouter, openai)", id="provider_input")
-            yield Label("Model:")
-            yield Input(value=config.get("model", "gpt-4o-mini"), placeholder="Model (e.g. google/gemma-7b-it:free)", id="model_input")
-            yield Label("API Key:")
-            yield Input(value=config.get("api_key", ""), placeholder="API Key", password=True, id="api_key_input")
-            yield Label("Heartbeat interval / requests per min (0 to disable):")
-            yield Input(value=str(config.get("requests_per_min", 0)), placeholder="Requests per minute (0 to disable)", id="rpm_input")
-            with Horizontal():
-                yield Button("Save", id="save_btn", variant="primary")
-                yield Button("Cancel", id="cancel_btn")
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "cancel_btn":
-            self.app.pop_screen()
-        elif event.button.id == "save_btn":
-            provider = self.query_one("#provider_input", Input).value.strip()
-            model = self.query_one("#model_input", Input).value.strip()
-            api_key = self.query_one("#api_key_input", Input).value.strip()
-            try:
-                rpm = int(self.query_one("#rpm_input", Input).value.strip())
-            except ValueError:
-                rpm = 0
-
-            config = load_config()
-            config["provider"] = provider
-            config["model"] = model
-            if api_key:
-                config["api_key"] = api_key
-            config["requests_per_min"] = rpm
-
-            from config import save_config
-            save_config(config)
-
-            self.app.config = config
-
-            # Update heartbeat timer
-            if hasattr(self.app, 'heartbeat_timer') and self.app.heartbeat_timer:
-                self.app.heartbeat_timer.stop()
-                self.app.heartbeat_timer = None
-
-            if rpm > 0:
-                interval = 60.0 / rpm
-                self.app.heartbeat_timer = self.app.set_interval(interval, self.app.trigger_heartbeat)
-
-            self.app.log_message("System", "Settings saved!")
-            self.app.pop_screen()
-
-class ChatMessage(Horizontal):
-    def __init__(self, sender: str, text: str):
-        super().__init__(classes=f"message {sender.lower()}")
-        self.sender = sender
-        self.text = text
-
-    def compose(self) -> ComposeResult:
-        if self.sender.lower() == "system":
-            yield Static(self.text, classes=f"bubble {self.sender.lower()}")
-        else:
-            yield Static(f"{self.sender}: {self.text}", classes=f"bubble {self.sender.lower()}")
+# Feature Integrations
+from features.axolotl import AxolotlAnimation
+from features.file_observer import FileSystemObserver
+from features.setup import do_first_run_setup
+from features.dashboard_ui import Dashboard
+from features.settings_ui import SettingsModal
+from features.chat_ui import ChatMessage
 
 class FuwaApp(App):
     BINDINGS = [
@@ -465,7 +156,6 @@ class FuwaApp(App):
         self.initial_choice_made = False
         self.choice_clicks = 0
 
-        import time
         self.session_start_time = time.time()
         self.heartbeat_count = 0
         self.is_first_heartbeat = True
@@ -517,8 +207,7 @@ class FuwaApp(App):
         self.choice_btns = [self.query_one(f"#btn_{i}", Button) for i in range(3)]
         self.user_input = self.query_one("#user_input", Input)
 
-        import collections
-        self.mood_history = collections.deque(maxlen=60)  # past 1 hour if updated every minute
+        self.mood_history = collections.deque(maxlen=60)
         self.cpu_history = collections.deque(maxlen=15)
         self.mem_history = collections.deque(maxlen=15)
 
@@ -527,17 +216,13 @@ class FuwaApp(App):
         self.log_message("System", "Fuwa woke up!")
         self.observer.start()
 
-        # initial mood record
         self.record_mood_history()
-
-        # Set initial deterministic choices
         self.update_choices(["*Stare blankly*", "*Go back to work*", "*Poke axolotl*"])
 
-        # Fast interval for observing changes, only makes API call when changes happen
         interval = 5.0
         self.heartbeat_timer = self.set_interval(interval, self.trigger_heartbeat)
 
-        self.trigger_heartbeat() # Initial trigger
+        self.trigger_heartbeat()
 
     def on_unmount(self) -> None:
         self.observer.stop()
@@ -563,41 +248,30 @@ class FuwaApp(App):
                 history_list = [(mood_str, current_color)]
 
             if len(history_list) < self.mood_history.maxlen:
-                # pad start
                 history_list = [history_list[0]] * (self.mood_history.maxlen - len(history_list)) + history_list
 
-            # complex braille characters for wave mapping
             wave_chars = ["⠀", "⣀", "⣤", "⣶", "⣿"]
 
-            # Create a 3-line full width wave from the actual time-wise history
             line_1 = ""
             line_2 = ""
             line_3 = ""
 
             for i, (m_str, color) in enumerate(history_list):
-                # map mood to a height for the wave (0 to 12).
-                # normal is middle, excited/angry is high, sleepy is low
                 val = 0.5
                 m = m_str.upper()
                 if m in ["ANGRY", "EXCITED", "HAPPY"]:
                     val = 0.9
                 elif m in ["SLEEPY", "SAD", "BORED"]:
                     val = 0.2
-                else:
-                    val = 0.5
 
-                # Total height 12: 4 levels per line over 3 lines
                 h = int(val * 12.0)
 
-                # Bottom line
                 idx_3 = min(4, max(0, h))
                 line_3 += f"[{color}]{wave_chars[idx_3]}[/]"
 
-                # Middle line
                 idx_2 = min(4, max(0, h - 4))
                 line_2 += f"[{color}]{wave_chars[idx_2]}[/]"
 
-                # Top line
                 idx_1 = min(4, max(0, h - 8))
                 line_1 += f"[{color}]{wave_chars[idx_1]}[/]"
 
@@ -605,13 +279,15 @@ class FuwaApp(App):
             styled_mood = f"Mood History (Past Hour):\n{wave}\nCurrent: [{current_color}]{mood_str}[/]"
             self.query_one("#stat_mood", Label).update(styled_mood)
 
-            # Set dynamic borders based on buddy color
-
             self.query_one("#left_panel").styles.border = ("round", current_color)
 
             right_panel = self.query_one("#right_panel")
-            # Textual border edge definition is a tuple. right_panel.styles.border[0] is e.g. ('none', Color(...))
-            if right_panel.styles.border and getattr(right_panel.styles.border[0], "name", right_panel.styles.border[0][0] if isinstance(right_panel.styles.border[0], tuple) else right_panel.styles.border[0]) != "none":
+            border_name = None
+            if right_panel.styles.border:
+                border_val = right_panel.styles.border[0]
+                border_name = getattr(border_val, "name", border_val[0] if isinstance(border_val, tuple) else border_val)
+            
+            if border_name != "none":
                 right_panel.styles.border = ("round", current_color)
 
             for col in self.query(".dash_col"):
@@ -627,7 +303,6 @@ class FuwaApp(App):
         self.chat_log_view.scroll_end(animate=True)
 
         self.chat_history.append(f"{sender}: {message}")
-        # Keep history manageable
         if len(self.chat_history) > 20:
             self.chat_history.pop(0)
 
@@ -641,7 +316,6 @@ class FuwaApp(App):
                 btn.disabled = True
 
     def reset_mood(self) -> None:
-        """Resets the companion's mood to NORMAL."""
         try:
             self.anim.set_mood("NORMAL")
             self.record_mood_history()
@@ -649,7 +323,6 @@ class FuwaApp(App):
             pass
 
     def extract_and_set_mood(self, text: str) -> str:
-        """Extracts mood tag like [MOOD: HAPPY], sets the mood, and returns text without the tag."""
         match = re.search(r"\[MOOD:\s*([a-zA-Z0-9_,\s]+)\]", text, re.IGNORECASE)
         if match:
             moods = [m.strip().upper() for m in match.group(1).split(",")]
@@ -678,14 +351,12 @@ class FuwaApp(App):
         if is_startup:
             self.is_first_heartbeat = False
 
-        # Early return if no events, this is the heartbeat signal
         if not events and not is_startup:
             return
 
-        # If choices were disabled, regenerate them now because the user is active
         needs_unlock = (self.choice_clicks >= 2)
 
-        self.choice_clicks = 0  # reset choices since user is active
+        self.choice_clicks = 0
         if hasattr(self, "unlock_timer") and self.unlock_timer:
             self.unlock_timer.stop()
             self.unlock_timer = None
@@ -696,7 +367,6 @@ class FuwaApp(App):
         obs_str = self.observer.format_observations(events)
         personality = self.config.get("personality", "")
 
-        # Read and summarize modified files in batch, storing in memory
         files_to_summarize = []
         for event in events:
             if event["action"] in ("modified", "created"):
@@ -704,9 +374,7 @@ class FuwaApp(App):
                 if os.path.isfile(filepath):
                     try:
                         with open(filepath, "r", encoding="utf-8") as f:
-                            # Read a small chunk to save LLM context, roughly 250 words max (approx 1500 chars)
                             content = f.read(1500)
-
                         files_to_summarize.append({"filename": event["filename"], "content": content})
                     except Exception as e:
                         print(f"Error reading {filepath} for summary: {e}")
@@ -715,37 +383,32 @@ class FuwaApp(App):
             try:
                 summaries = summarize_files_batch(files_to_summarize)
                 if summaries:
-                    from memory import update_memories
+                    from infrastructure.memory import update_memories
                     update_memories(summaries)
             except Exception as e:
                 print(f"Error in batch summarizing files: {e}")
 
-        # Disable buttons while generating
         if self.initial_choice_made or is_startup:
             self.call_from_thread(self.disable_buttons)
 
-        # Get relevant context from local vector DB instead of all memories
-        from memory import search_memory
-
-        # Use recent events to build a search query
         query_text = " ".join([e["filename"] for e in events])
         if is_startup and not query_text:
-            query_text = "project" # Generic search for initial scan
+            query_text = "project"
         memories = search_memory(query_text, top_k=5)
 
+        available_moods = AxolotlAnimation.get_available_moods()
         if is_startup:
             self.initial_choice_made = True
             system_prompt = "System: The application has just started. Proactively greet the user and set yourself up!"
             if memories:
                 system_prompt += f"\nInitial memories of the project:\n{memories}"
-            comment = process_interaction(system_prompt, obs_str, personality, is_startup=True)
+            comment = process_interaction(system_prompt, obs_str, personality, available_moods, is_startup=True)
         else:
-            comment = generate_comment(obs_str, personality, memories)
+            comment = generate_comment(obs_str, personality, available_moods, memories)
 
         comment = self.extract_and_set_mood(comment)
         self.call_from_thread(self.log_message, "Fuwa", comment)
 
-        # Manually append the comment to context so the next LLM call has it immediately
         history_copy = self.chat_history.copy()
         history_copy.append(f"Fuwa: {comment}")
         context = "\n".join(history_copy[-5:])
@@ -758,18 +421,13 @@ class FuwaApp(App):
         self.call_from_thread(self.update_dashboard)
 
     def update_dashboard(self) -> None:
-        import time
-        import os
-
         def generate_bar(pct: float, color: str, width: int = 15) -> str:
             filled = int((pct / 100.0) * width)
             empty = width - filled
             res = f"[{color}]" + ("⣿" * filled) + "[/]" + "[#555555]" + ("⣀" * empty) + "[/]"
             return res
 
-        # Ensure we don't crash if Dashboard is not rendered or collapsed
         try:
-            # System Stats
             active_time = int(time.time() - self.session_start_time)
             mins, secs = divmod(active_time, 60)
             hours, mins = divmod(mins, 60)
@@ -779,14 +437,9 @@ class FuwaApp(App):
             mem_usage_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
             mem_usage_mb = mem_usage_kb / 1024.0
 
-            # Estimate total memory or assume ~8GB to compute a small percentage
-            # Since the process memory is typically tiny, we'll map to a generous cap (e.g. 512MB) to show some visual movement
             mem_pct = min(100.0, (mem_usage_mb / 512.0) * 100.0)
             if hasattr(self, 'mem_history'):
                 self.mem_history.append(mem_pct)
-            else:
-                # keep mem_history to not crash other usages if any
-                pass
 
             mem_chart = generate_bar(mem_pct, "cyan")
             self.query_one("#stat_mem", Label).update(f"Memory Usage: ~{mem_usage_mb:.1f}MB\n{mem_chart} {mem_pct:.1f}%")
@@ -803,19 +456,15 @@ class FuwaApp(App):
 
             if hasattr(self, 'cpu_history'):
                 self.cpu_history.append(cpu_val)
-            else:
-                pass
 
             cpu_chart = generate_bar(cpu_val, "magenta")
             self.query_one("#stat_cpu", Label).update(f"Observer CPU: {cpu_percent}\n{cpu_chart}")
 
-            # Buddy Stats
             self.query_one("#stat_heartbeats", Label).update(f"Heartbeats: {self.heartbeat_count}")
             total_events = getattr(self.observer, "total_events", 0)
             self.query_one("#stat_total_events", Label).update(f"Events Handled: {total_events}")
 
-            # Session Info
-            from memory import load_memory
+            from infrastructure.memory import load_memory
             memories = load_memory()
             files_observed = len(memories)
             self.query_one("#stat_files_observed", Label).update(f"Context Size: {files_observed} files")
@@ -827,7 +476,6 @@ class FuwaApp(App):
 
             self.query_one("#stat_tokens", Label).update(f"Est. Tokens: ~{est_tokens}/{max_tokens}\n{token_chart} {token_pct:.1f}%")
 
-            # Simple latency dummy
             import math
             latency = 1.2 + (math.sin(time.time()) * 0.3)
             self.query_one("#stat_latency", Label).update(f"Avg Latency: ~{latency:.2f}s")
@@ -865,13 +513,11 @@ class FuwaApp(App):
 
         self.config["buddy_size"] = new_size
 
-        from config import save_config
         save_config(self.config)
 
-        # Disable animation timer temporarily to prevent race conditions
         old_mood = self.anim.mood
         self.anim = AxolotlAnimation(buddy_size=new_size, silent=True)
-        self.anim.set_mood(old_mood) # Ensure mood carries over
+        self.anim.set_mood(old_mood)
         self.log_message("System", f"Buddy size changed to [bold yellow]{new_size}[/].")
         self.update_animation()
 
@@ -925,7 +571,8 @@ class FuwaApp(App):
         personality = self.config.get("personality", "")
         context = "\n".join(self.chat_history[-5:])
 
-        response = process_interaction(user_choice, context, personality)
+        available_moods = AxolotlAnimation.get_available_moods()
+        response = process_interaction(user_choice, context, personality, available_moods)
         response = self.extract_and_set_mood(response)
         self.call_from_thread(self.log_message, "Fuwa", response)
 
@@ -934,7 +581,6 @@ class FuwaApp(App):
             self.call_from_thread(self.log_message, "System", "Fuwa is watching you. Go write some code!")
             self.call_from_thread(self._start_unlock_timer)
         else:
-            # Generate new choices based on this new context, manually appending the new response so it has context
             history_copy = self.chat_history.copy()
             history_copy.append(f"Fuwa: {response}")
             new_context = "\n".join(history_copy[-5:])

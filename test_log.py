@@ -1,7 +1,7 @@
 from textual.app import App, ComposeResult
 from textual.widgets import Log, RichLog
 
-class TestApp(App):
+class DemoApp(App):
     def compose(self) -> ComposeResult:
         yield Log(id="log")
         yield RichLog(id="rich_log", markup=True)
@@ -11,5 +11,5 @@ class TestApp(App):
         self.query_one("#rich_log").write("[bold cyan]System[/]: RichLog")
 
 if __name__ == "__main__":
-    app = TestApp()
+    app = DemoApp()
     app.run()

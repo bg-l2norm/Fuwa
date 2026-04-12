@@ -34,19 +34,19 @@ async def test_fuwa_app_startup():
         assert btn2.disabled
 
 def test_config_defaults():
-    from config import load_config
+    from infrastructure.config import load_config
     config = load_config()
     assert "watch_folders" in config
     assert "personality" in config
 
 def test_generate_comment_error_path(mocker):
-    from llm import generate_comment
+    from infrastructure.llm import generate_comment
 
     # Mock simple_completion to raise an exception
-    mocker.patch('llm.simple_completion', side_effect=Exception("Test error"))
+    mocker.patch('infrastructure.llm.simple_completion', side_effect=Exception("Test error"))
 
     # Call generate_comment with dummy arguments
-    result = generate_comment("test observation", "test personality", "test memory")
+    result = generate_comment("test observation", "test personality", ["NORMAL"], "test memory")
 
     # Assert that the error is handled and returns the expected fallback message
     assert result == "(Axolotl looks confused...) Error: Test error"

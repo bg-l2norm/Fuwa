@@ -1,4 +1,4 @@
-from axolotl import AxolotlAnimation
+from features.axolotl import AxolotlAnimation
 
 sizes = ["small", "normal", "large"]
 for size in sizes:

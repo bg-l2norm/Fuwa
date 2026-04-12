@@ -1,4 +1,4 @@
-from axolotl import AxolotlAnimation
+from features.axolotl import AxolotlAnimation
 
 def test_anim():
     print("Testing small size:")

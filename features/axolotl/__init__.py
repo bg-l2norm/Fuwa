@@ -7,7 +7,7 @@ from textual.widgets import Static
 from rich.text import Text
 import base64
 import subprocess
-from ansi_converter import convert_and_save_script, convert_image_to_ansi, get_content_bounds, get_dominant_color
+from infrastructure.ansi import convert_and_save_script, convert_image_to_ansi, get_content_bounds, get_dominant_color
 from PIL import Image, ImageDraw
 
 from rich.console import Console
