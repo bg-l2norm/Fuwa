@@ -11,6 +11,7 @@ print_help() {
     echo "  install  - Installs Fuwa (creates venv, installs deps)"
     echo "  update   - Pulls latest changes and updates deps"
     echo "  doctor   - Checks for issues and fixes them"
+    echo "  setup    - Configure Fuwa API and settings"
     echo "  run      - Runs Fuwa (default if no command provided)"
     echo "  help     - Shows this help message"
 }
@@ -94,6 +95,10 @@ case "$COMMAND" in
     doctor)
         ensure_bootstrap || exit 1
         venv/bin/python installer.py doctor
+        ;;
+    setup)
+        ensure_bootstrap || exit 1
+        venv/bin/python fuwa.py --setup
         ;;
     run)
         do_run
