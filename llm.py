@@ -12,11 +12,6 @@ def _get_api_kwargs():
     provider = config.get("provider", "openai")
     api_key = config.get("api_key", "")
 
-    # For OpenRouter, if the user already provided the openrouter/ prefix, strip it so the actual API
-    # receives the correct model.
-    if provider == "openrouter" and model.startswith("openrouter/"):
-        model = model[len("openrouter/"):]
-
     return {
         "model": model,
         "provider": provider,
@@ -182,12 +177,34 @@ def generate_comment(observations: str, personality: str, file_memories: str = "
         "Output ONLY the raw text response."
     )
 
+    # Read optional SOUL.md and USER.md
+    soul_content = ""
+    if os.path.exists("SOUL.md"):
+        try:
+            with open("SOUL.md", "r", encoding="utf-8") as f:
+                soul_content = f.read().strip()
+        except Exception:
+            pass
+
+    user_md_content = ""
+    if os.path.exists("USER.md"):
+        try:
+            with open("USER.md", "r", encoding="utf-8") as f:
+                user_md_content = f.read().strip()
+        except Exception:
+            pass
+
     user_message = (
         f"Your personality:\n{personality}\n\n"
         f"Valid mood tags: {moods_str}. "
         f"For example: '{moods_str.split(', ')[0]} Wow, you are working so hard!'\n\n"
         f"Here are the recent file events:\n```\n{observations}\n```\n\n"
     )
+    if soul_content:
+        user_message += f"Your deepest behavioral instructions (SOUL):\n```\n{soul_content}\n```\n\n"
+    if user_md_content:
+        user_message += f"Information about the user and their intents (USER):\n```\n{user_md_content}\n```\n\n"
+
     if file_memories:
         user_message += f"Here are summaries of some of the files for context:\n```\n{file_memories}\n```"
 
@@ -212,7 +229,9 @@ def generate_choices(recent_context: str, personality: str) -> list[str]:
 
     system_prompt = (
         "Based on the recent context/chat log, generate 3 short, text-RPG style choices (actions or dialogue) "
-        "for the user to pick from. They should be emotionally engaging, funny, or play into the guilt/praise dynamic.\n"
+        "from the USER's perspective for them to respond to the companion. "
+        "These are choices the USER will make. Do not make the companion talk to itself. "
+        "They should be emotionally engaging, funny, or play into the guilt/praise dynamic.\n"
         "Return the response ONLY as a valid JSON object with a single key 'choices' containing an array of 3 strings. Example: "
         '{"choices": ["I am working on it, promise!", "Ignore the axolotl.", "*Pat its head*"]}'
     )
@@ -274,10 +293,35 @@ def process_interaction(interaction: str, recent_context: str, personality: str)
         "If you use a tool, you will get the result back to formulate your next response."
     )
 
+    # Read optional SOUL.md and USER.md
+    soul_content = ""
+    if os.path.exists("SOUL.md"):
+        try:
+            with open("SOUL.md", "r", encoding="utf-8") as f:
+                soul_content = f.read().strip()
+        except Exception:
+            pass
+
+    user_md_content = ""
+    if os.path.exists("USER.md"):
+        try:
+            with open("USER.md", "r", encoding="utf-8") as f:
+                user_md_content = f.read().strip()
+        except Exception:
+            pass
+
     user_message = (
         f"Your personality:\n{personality}\n\n"
         f"Valid mood tags: {moods_str}. "
         f"For example: '{moods_str.split(', ')[-1] if ',' in moods_str else moods_str.split(', ')[0]} Do not ignore me!'\n\n"
+    )
+
+    if soul_content:
+        user_message += f"Your deepest behavioral instructions (SOUL):\n```\n{soul_content}\n```\n\n"
+    if user_md_content:
+        user_message += f"Information about the user and their intents (USER):\n```\n{user_md_content}\n```\n\n"
+
+    user_message += (
         "The user just chose this action/dialogue:\n"
         f"> {interaction}\n\n"
         f"Recent context:\n{recent_context}"
