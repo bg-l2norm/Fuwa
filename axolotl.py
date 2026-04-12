@@ -7,7 +7,7 @@ from textual.widgets import Static
 from rich.text import Text
 import base64
 import subprocess
-from ansi_converter import convert_and_save_script, convert_image_to_ansi, get_content_bounds
+from ansi_converter import convert_and_save_script, convert_image_to_ansi, get_content_bounds, get_dominant_color
 from PIL import Image, ImageDraw
 
 from rich.console import Console
@@ -19,6 +19,7 @@ class AxolotlAnimation:
         self.frames = {}
         self.buddy_size = buddy_size.lower()
         self.silent = silent
+        self.mood_colors = {}
         if self.buddy_size == "small":
             self.target_width = 14
         elif self.buddy_size == "large":
@@ -26,6 +27,23 @@ class AxolotlAnimation:
         else:
             self.target_width = 22
         self._load_assets()
+
+    def get_current_color(self, mood: str = None) -> str:
+        """Returns the dominant color associated with the current mood."""
+        mood = (mood or self.mood).upper()
+
+        # Mapping for default drawn text fallback
+        fallback_colors = {
+            "NORMAL": "#ffb6c1", # pink
+            "HAPPY": "#90ee90",  # lightgreen
+            "ANGRY": "#ff0000",  # red
+            "SLEEPY": "#add8e6"  # lightblue
+        }
+
+        if mood in self.mood_colors:
+            return self.mood_colors[mood]
+
+        return fallback_colors.get(mood, "#ff69b4")
 
     @staticmethod
     def get_available_moods() -> list[str]:
@@ -60,6 +78,14 @@ class AxolotlAnimation:
                     frame_num = int(match.group(2))
                     filepath = os.path.join(assets_dir, filename)
                     temp_frames[mood_str].append((frame_num, filepath, filename))
+
+        # Determine dominant color for each mood
+        for mood_str, files in temp_frames.items():
+            if files:
+                # Sort to ensure we get the first frame consistently
+                files.sort(key=lambda x: x[0])
+                first_frame_path = files[0][1]
+                self.mood_colors[mood_str] = get_dominant_color(first_frame_path)
 
         import hashlib
 

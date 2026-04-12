@@ -6,6 +6,42 @@ from collections import deque
 
 from PIL import Image, ImageEnhance, ImageDraw
 
+def get_dominant_color(image_path):
+    """
+    Finds the dominant color of an image ignoring transparent and near-black pixels.
+    Returns a hex color string like #ff69b4.
+    """
+    try:
+        img = Image.open(image_path).convert("RGBA")
+        img = _remove_background(img)
+
+        # Quantize colors by reducing bits
+        img = img.point(lambda p: p // 16 * 16 + 8)
+        colors = img.getcolors(img.size[0] * img.size[1])
+        if not colors:
+            return "#ff69b4"
+
+        valid_colors = []
+        for count, (r, g, b, a) in colors:
+            if a > 127:
+                if r < 30 and g < 30 and b < 30:
+                    continue
+                valid_colors.append((count, (r, g, b)))
+
+        if not valid_colors:
+            for count, (r, g, b, a) in colors:
+                if a > 127:
+                    valid_colors.append((count, (r, g, b)))
+
+        if not valid_colors:
+            return "#ff69b4"
+
+        best_color = max(valid_colors, key=lambda x: x[0])[1]
+        return f"#{best_color[0]:02x}{best_color[1]:02x}{best_color[2]:02x}"
+    except Exception as e:
+        print(f"Error extracting dominant color for {image_path}: {e}")
+        return "#ff69b4"
+
 def _remove_background(img):
     # This is a fast floodfill algorithm to remove background (where it is near white or transparent)
     # Using PIL's floodfill on an RGB copy where alpha is mixed.
