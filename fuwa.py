@@ -119,10 +119,37 @@ def do_first_run_setup():
             else:
                 break
 
-        watch_folders_str = Prompt.ask("Enter comma-separated directories to observe (default: .)", default=".")
+        home_dir = os.path.expanduser('~')
+        console.print("\n[bold cyan]Select directories to observe:[/bold cyan]")
+        console.print(f"1) Use home directory ({home_dir}) (default)")
+        console.print("2) Open GUI folder picker")
+        console.print("3) Type path manually")
+        dir_choice = Prompt.ask("Choose option by number", choices=["1", "2", "3"], default="1")
+
+        watch_folders_str = home_dir
+        if dir_choice == "2":
+            try:
+                import tkinter as tk
+                from tkinter import filedialog
+                root = tk.Tk()
+                root.withdraw()
+                root.attributes('-topmost', True)
+                folder = filedialog.askdirectory(title="Select directory to observe")
+                root.destroy()
+                if folder:
+                    watch_folders_str = folder
+                else:
+                    console.print("[yellow]No folder selected, falling back to manual input.[/yellow]")
+                    watch_folders_str = Prompt.ask("Enter comma-separated directories to observe", default=home_dir)
+            except Exception as e:
+                console.print(f"[yellow]GUI dialog failed ({e}), falling back to manual input.[/yellow]")
+                watch_folders_str = Prompt.ask("Enter comma-separated directories to observe", default=home_dir)
+        elif dir_choice == "3":
+            watch_folders_str = Prompt.ask("Enter comma-separated directories to observe", default=home_dir)
+
         watch_folders = [f.strip() for f in watch_folders_str.split(",") if f.strip()]
         if not watch_folders:
-            watch_folders = ["."]
+            watch_folders = [home_dir]
 
         config_data = DEFAULT_CONFIG.copy()
         config_data["provider"] = provider
