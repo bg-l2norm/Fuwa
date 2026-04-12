@@ -63,5 +63,5 @@ class SettingsModal(ModalScreen):
                 interval = 60.0 / rpm
                 self.app.heartbeat_timer = self.app.set_interval(interval, self.app.trigger_heartbeat)
 
-            self.app.log_message("System", "Settings saved!")
+            self.app.bus.publish("log_message", sender="System", message="Settings saved!")
             self.app.pop_screen()
