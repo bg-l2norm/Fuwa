@@ -1,6 +1,7 @@
 import json
 import os
 import urllib.request
+import re
 import urllib.error
 from config import load_config
 from axolotl import AxolotlAnimation
@@ -268,6 +269,7 @@ def process_interaction(interaction: str, recent_context: str, personality: str)
         "Output ONLY the text. "
         "You have access to tools! "
         "If you want to read files or run read-only terminal commands (e.g. ls, cat, grep), output [RUN: command] in your response. "
+        "Do NOT use pipes (|) or redirects (>) as they are not supported. "
         "If you want to write a summary to your memory, output [MEM: filename | summary] in your response. "
         "If you use a tool, you will get the result back to formulate your next response."
     )
@@ -305,13 +307,26 @@ def process_interaction(interaction: str, recent_context: str, personality: str)
                 try:
                     # Execute read-only tools safely
                     import shlex
-                    args = shlex.split(cmd)
-                    if not args:
+                    import glob
+                    raw_args = shlex.split(cmd)
+                    if not raw_args:
                         raise Exception("Empty command.")
 
                     allowed_commands = {'ls', 'cat', 'grep', 'head', 'tail', 'find', 'pwd'}
-                    if args[0] not in allowed_commands:
-                        raise Exception(f"Command '{args[0]}' is not allowed. Only read-only commands ({', '.join(allowed_commands)}) are permitted.")
+                    if raw_args[0] not in allowed_commands:
+                        raise Exception(f"Command '{raw_args[0]}' is not allowed. Only read-only commands ({', '.join(allowed_commands)}) are permitted.")
+
+                    args = []
+                    for arg in raw_args:
+                        expanded_arg = os.path.expanduser(os.path.expandvars(arg))
+                        if any(c in expanded_arg for c in ('*', '?', '[')):
+                            matches = glob.glob(expanded_arg)
+                            if matches:
+                                args.extend(matches)
+                            else:
+                                args.append(expanded_arg)
+                        else:
+                            args.append(expanded_arg)
 
                     result = subprocess.run(args, capture_output=True, text=True, timeout=5)
                     output = (result.stdout + result.stderr).strip()
