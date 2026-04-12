@@ -549,10 +549,8 @@ class FuwaApp(App):
             styled_mood = f"Mood: {wave} [bold pink1]{mood_str}[/] {wave[::-1]}"
             self.query_one("#stat_mood", Label).update(styled_mood)
 
-            # Animate borders
-            border_colors = ["#ffe4e1", "#ffb6c1", "#ff69b4", "#ff1493", "#ff69b4", "#ffb6c1"]
-            color_idx = int(time.time() * 2) % len(border_colors)
-            current_color = border_colors[color_idx]
+            # Set dynamic borders based on buddy color
+            current_color = self.anim.get_current_color(mood_str)
 
             self.query_one("#left_panel").styles.border = ("round", current_color)
 
