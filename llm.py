@@ -290,6 +290,7 @@ def process_interaction(interaction: str, recent_context: str, personality: str)
         "If you want to read files or run read-only terminal commands (e.g. ls, cat, grep), output [RUN: command] in your response. "
         "Do NOT use pipes (|) or redirects (>) as they are not supported. "
         "If you want to write a summary to your memory, output [MEM: filename | summary] in your response. "
+        "If you want to edit your persona (SOUL.md) or user preferences (USER.md), output [WRITE: filename | content] in your response. Only SOUL.md and USER.md can be written. "
         "If you use a tool, you will get the result back to formulate your next response."
     )
 
@@ -345,6 +346,7 @@ def process_interaction(interaction: str, recent_context: str, personality: str)
 
             cmd_match = re.search(r'\[RUN:\s*(.*?)\]', ai_response)
             mem_match = re.search(r'\[MEM:\s*(.*?)\s*\|\s*(.*?)\]', ai_response)
+            write_match = re.search(r'\[WRITE:\s*(.*?)\s*\|\s*(.*)\]', ai_response, re.DOTALL)
 
             if cmd_match:
                 cmd = cmd_match.group(1)
@@ -390,6 +392,26 @@ def process_interaction(interaction: str, recent_context: str, personality: str)
 
                 messages.append({"role": "assistant", "content": ai_response})
                 messages.append({"role": "user", "content": f"Memory updated for {key}.\nNow respond to the user."})
+                continue
+
+            elif write_match:
+                filename = write_match.group(1).strip()
+                content = write_match.group(2).strip()
+                if content.endswith(']'):
+                    content = content[:-1].strip()
+
+                if filename in ["SOUL.md", "USER.md"]:
+                    try:
+                        with open(filename, "w", encoding="utf-8") as f:
+                            f.write(content)
+                        messages.append({"role": "assistant", "content": ai_response})
+                        messages.append({"role": "user", "content": f"Successfully updated {filename}.\nNow respond to the user."})
+                    except Exception as e:
+                        messages.append({"role": "assistant", "content": ai_response})
+                        messages.append({"role": "user", "content": f"Failed to update {filename}: {str(e)}.\nNow respond to the user."})
+                else:
+                    messages.append({"role": "assistant", "content": ai_response})
+                    messages.append({"role": "user", "content": f"Error: You are only allowed to write to SOUL.md or USER.md. Writing to {filename} is forbidden.\nNow respond to the user."})
                 continue
 
             break
