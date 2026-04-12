@@ -3,19 +3,6 @@ import os
 import urllib.request
 import re
 import urllib.error
-from infrastructure.config import load_config
-
-def _get_api_kwargs():
-    config = load_config()
-    model = config.get("model", "gpt-4o-mini")
-    provider = config.get("provider", "openai")
-    api_key = config.get("api_key", "")
-
-    return {
-        "model": model,
-        "provider": provider,
-        "api_key": api_key
-    }
 
 def simple_completion(messages, model, provider, api_key, max_tokens=100, response_format=None):
     if provider in ["openai", "openrouter"]:
@@ -91,11 +78,10 @@ def _parse_json_response(content: str) -> dict:
         print(f"Error parsing JSON: {e}")
         return {}
 
-def summarize_paths_batch(paths: list[str]) -> dict:
+def summarize_paths_batch(paths: list[str], provider: str, model: str, api_key: str) -> dict:
     """Generates high-level summaries based ONLY on file paths/names."""
     if not paths:
         return {}
-    kwargs = _get_api_kwargs()
 
     system_prompt = (
         "You are an AI assistant analyzing a project's structure. "
@@ -108,15 +94,15 @@ def summarize_paths_batch(paths: list[str]) -> dict:
     user_message = f"File paths:\n{paths_str}"
 
     try:
-        response_format = {"type": "json_object"} if "gpt" in kwargs["model"] else None
+        response_format = {"type": "json_object"} if "gpt" in model else None
         response = simple_completion(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
             ],
-            model=kwargs["model"],
-            provider=kwargs["provider"],
-            api_key=kwargs["api_key"],
+            model=model,
+            provider=provider,
+            api_key=api_key,
             max_tokens=1500,
             response_format=response_format
         )
@@ -125,11 +111,10 @@ def summarize_paths_batch(paths: list[str]) -> dict:
         print(f"Error summarizing paths batch: {e}")
         return {}
 
-def summarize_files_batch(files_data: list[dict]) -> dict:
+def summarize_files_batch(files_data: list[dict], provider: str, model: str, api_key: str) -> dict:
     """Generates summaries for a batch of files using their partial content."""
     if not files_data:
         return {}
-    kwargs = _get_api_kwargs()
 
     system_prompt = (
         "You are an AI assistant that summarizes codebase files to capture the user's high-level intent. "
@@ -145,15 +130,15 @@ def summarize_files_batch(files_data: list[dict]) -> dict:
     user_message = "\n".join(user_parts)
 
     try:
-        response_format = {"type": "json_object"} if "gpt" in kwargs["model"] else None
+        response_format = {"type": "json_object"} if "gpt" in model else None
         response = simple_completion(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
             ],
-            model=kwargs["model"],
-            provider=kwargs["provider"],
-            api_key=kwargs["api_key"],
+            model=model,
+            provider=provider,
+            api_key=api_key,
             max_tokens=2500,
             response_format=response_format
         )
@@ -162,9 +147,8 @@ def summarize_files_batch(files_data: list[dict]) -> dict:
         print(f"Error summarizing files batch: {e}")
         return {}
 
-def generate_comment(observations: str, personality: str, available_moods: list[str], file_memories: str = "") -> str:
+def generate_comment(observations: str, personality: str, available_moods: list[str], provider: str, model: str, api_key: str, file_memories: str = "") -> str:
     """Generates a blurt from the axolotl based on recent observations and memories."""
-    kwargs = _get_api_kwargs()
 
     moods_str = ", ".join(f"[MOOD: {m}]" for m in available_moods)
 
@@ -214,18 +198,17 @@ def generate_comment(observations: str, personality: str, available_moods: list[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
             ],
-            model=kwargs["model"],
-            provider=kwargs["provider"],
-            api_key=kwargs["api_key"],
+            model=model,
+            provider=provider,
+            api_key=api_key,
             max_tokens=150
         )
         return response.strip()
     except Exception as e:
         return f"(Axolotl looks confused...) Error: {str(e)}"
 
-def generate_choices(recent_context: str, personality: str) -> list[str]:
+def generate_choices(recent_context: str, personality: str, provider: str, model: str, api_key: str) -> list[str]:
     """Generates 3 interactive text-RPG style choices for the user to respond to the blurt."""
-    kwargs = _get_api_kwargs()
 
     system_prompt = (
         "Based on the recent context/chat log, generate 3 short, text-RPG style choices (actions or dialogue) "
@@ -239,15 +222,15 @@ def generate_choices(recent_context: str, personality: str) -> list[str]:
     user_message = f"Your personality:\n{personality}\n\nContext:\n{recent_context}"
 
     try:
-        response_format = {"type": "json_object"} if "gpt" in kwargs["model"] else None
+        response_format = {"type": "json_object"} if "gpt" in model else None
         content = simple_completion(
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
             ],
-            model=kwargs["model"],
-            provider=kwargs["provider"],
-            api_key=kwargs["api_key"],
+            model=model,
+            provider=provider,
+            api_key=api_key,
             max_tokens=200,
             response_format=response_format
         )
@@ -271,12 +254,14 @@ def generate_choices(recent_context: str, personality: str) -> list[str]:
         print(f"Error generating choices: {e}")
         return ["*Stare blankly*", "*Go back to work*", "*Poke axolotl*"]
 
-def process_interaction(interaction: str, recent_context: str, personality: str, available_moods: list[str], is_startup: bool = False) -> str:
-    """Processes user interaction and generates axolotl's response, potentially updating personality."""
-    kwargs = _get_api_kwargs()
-    from infrastructure.config import update_config
+def process_interaction(interaction: str, recent_context: str, personality: str, available_moods: list[str], provider: str, model: str, api_key: str, is_startup: bool = False) -> tuple[str, dict, str]:
+    """
+    Processes user interaction and generates axolotl's response.
+    Returns: (ai_response, memory_updates, new_personality)
+    Memory updates is a dictionary of {filename: summary}.
+    New personality is a string, could be None if no update.
+    """
     import subprocess
-    from infrastructure.memory import update_memory
 
     moods_str = ", ".join(f"[MOOD: {m}]" for m in available_moods)
 
@@ -349,14 +334,16 @@ def process_interaction(interaction: str, recent_context: str, personality: str,
         {"role": "user", "content": user_message}
     ]
 
+    memory_updates = {}
+
     try:
         ai_response = ""
         for _ in range(3):
             ai_response = simple_completion(
                 messages=messages,
-                model=kwargs["model"],
-                provider=kwargs["provider"],
-                api_key=kwargs["api_key"],
+                model=model,
+                provider=provider,
+                api_key=api_key,
                 max_tokens=150
             ).strip()
 
@@ -404,7 +391,7 @@ def process_interaction(interaction: str, recent_context: str, personality: str,
             elif mem_match:
                 key = mem_match.group(1).strip()
                 val = mem_match.group(2).strip()
-                update_memory(key, val)
+                memory_updates[key] = val
 
                 messages.append({"role": "assistant", "content": ai_response})
                 messages.append({"role": "user", "content": f"Memory updated for {key}.\nNow respond to the user."})
@@ -447,23 +434,24 @@ def process_interaction(interaction: str, recent_context: str, personality: str,
             f"AI response: {ai_response}"
         )
 
+        new_personality = None
         try:
-            new_personality = simple_completion(
+            new_personality_str = simple_completion(
                 messages=[
                     {"role": "system", "content": update_prompt},
                     {"role": "user", "content": update_user_message}
                 ],
-                model=kwargs["model"],
-                provider=kwargs["provider"],
-                api_key=kwargs["api_key"],
+                model=model,
+                provider=provider,
+                api_key=api_key,
                 max_tokens=200
             )
-            new_personality = new_personality.strip()
-            if new_personality:
-                update_config("personality", new_personality)
+            new_personality_str = new_personality_str.strip()
+            if new_personality_str:
+                new_personality = new_personality_str
         except Exception:
             pass # Fails silently if it can't update personality
 
-        return ai_response
+        return ai_response, memory_updates, new_personality
     except Exception as e:
-        return f"(Axolotl glitched...) Error: {str(e)}"
+        return f"(Axolotl glitched...) Error: {str(e)}", {}, None
