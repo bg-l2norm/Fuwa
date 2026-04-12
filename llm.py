@@ -39,7 +39,8 @@ def simple_completion(messages, model, provider, api_key, max_tokens=100, respon
         try:
             with urllib.request.urlopen(req) as response:
                 result = json.loads(response.read().decode("utf-8"))
-                return result["choices"][0]["message"]["content"]
+                content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+                return content if content is not None else ""
         except urllib.error.HTTPError as e:
             raise Exception(f"HTTP Error {e.code}: {e.read().decode('utf-8')}")
 
@@ -70,7 +71,8 @@ def simple_completion(messages, model, provider, api_key, max_tokens=100, respon
         try:
             with urllib.request.urlopen(req) as response:
                 result = json.loads(response.read().decode("utf-8"))
-                return result["content"][0]["text"]
+                content = result.get("content", [{}])[0].get("text", "")
+                return content if content is not None else ""
         except urllib.error.HTTPError as e:
             raise Exception(f"HTTP Error {e.code}: {e.read().decode('utf-8')}")
 

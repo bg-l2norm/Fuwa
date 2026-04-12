@@ -239,6 +239,8 @@ def do_first_run_setup(force_setup=False):
                 from memory import update_memories
                 update_memories(summaries)
 
+        console.print(f"[bold green]✅ Initial scan complete! Observed {len(summaries)} files.[/bold green]\n")
+
         # Loading animation
         with Progress(
             SpinnerColumn(spinner_name="dots"),
