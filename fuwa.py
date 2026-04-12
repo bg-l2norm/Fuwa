@@ -32,7 +32,7 @@ import os
 from axolotl import AxolotlAnimation
 from config import load_config, update_config, CONFIG_FILE
 from observer import FileSystemObserver
-from llm import generate_comment, generate_choices, process_interaction, summarize_file
+from llm import generate_comment, generate_choices, process_interaction, summarize_paths_batch, summarize_files_batch
 from memory import update_memory, get_all_memories
 
 
@@ -140,7 +140,7 @@ def do_first_run_setup():
 
         console.print("\n[bold green]✅ Setup complete![/bold green]\n")
 
-        # Walk directories and generate first-pass summaries
+        # Walk directories and generate first-pass summaries based ONLY on paths
         console.print("[bold cyan]Scanning directories to understand your project...[/bold cyan]")
 
         ignored_patterns = [
@@ -153,14 +153,15 @@ def do_first_run_setup():
 
         with Progress(
             SpinnerColumn(spinner_name="dots"),
-            TextColumn("[bold cyan]Reading files and generating summaries...[/bold cyan]"),
+            TextColumn("[bold cyan]Analyzing project structure...[/bold cyan]"),
             transient=True
         ) as progress:
             task = progress.add_task("scanning", total=None)
 
-            # Temporary override of api key in env if needed for summarize_file
+            # Temporary override of api key in env if needed for summarize_paths_batch
             os.environ["FUWA_API_KEY"] = api_key
 
+            paths_to_summarize = []
             for folder in watch_folders:
                 folder_path = os.path.abspath(folder)
                 if not os.path.isdir(folder_path):
@@ -181,19 +182,22 @@ def do_first_run_setup():
                         except ValueError:
                             rel_path = filepath
 
-                        # Quick check to not read huge binaries
-                        if os.path.getsize(filepath) > 1024 * 1024: # Skip > 1MB
-                            continue
+                        paths_to_summarize.append(rel_path)
 
+            # Batch summarize paths
+            if paths_to_summarize:
+                batch_size = 50
+                batches = [paths_to_summarize[i:i + batch_size] for i in range(0, len(paths_to_summarize), batch_size)]
+
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+                    futures = {executor.submit(summarize_paths_batch, batch): batch for batch in batches}
+                    for future in concurrent.futures.as_completed(futures):
                         try:
-                            with open(filepath, "r", encoding="utf-8") as f:
-                                content = f.read(5000) # Only read first 5000 chars
-                            if content.strip():
-                                summary = summarize_file(rel_path, content)
-                                update_memory(rel_path, summary)
-                        except UnicodeDecodeError:
-                            # Binary file likely
-                            pass
+                            summaries = future.result()
+                            if summaries:
+                                from memory import update_memories
+                                update_memories(summaries)
                         except Exception as e:
                             pass
 
@@ -577,20 +581,29 @@ class FuwaApp(App):
         obs_str = self.observer.format_observations(events)
         personality = self.config.get("personality", "")
 
-        # Read and summarize modified files, storing in memory
+        # Read and summarize modified files in batch, storing in memory
+        files_to_summarize = []
         for event in events:
             if event["action"] in ("modified", "created"):
                 filepath = event["absolute_path"]
                 if os.path.isfile(filepath):
                     try:
                         with open(filepath, "r", encoding="utf-8") as f:
-                            # Read a small chunk to save LLM context
-                            content = f.read(5000)
+                            # Read a small chunk to save LLM context, roughly 250 words max (approx 1500 chars)
+                            content = f.read(1500)
 
-                        summary = summarize_file(event["filename"], content)
-                        update_memory(event["filename"], summary)
+                        files_to_summarize.append({"filename": event["filename"], "content": content})
                     except Exception as e:
                         print(f"Error reading {filepath} for summary: {e}")
+
+        if files_to_summarize:
+            try:
+                summaries = summarize_files_batch(files_to_summarize)
+                if summaries:
+                    from memory import update_memories
+                    update_memories(summaries)
+            except Exception as e:
+                print(f"Error in batch summarizing files: {e}")
 
         # Disable buttons while generating
         if self.initial_choice_made:
