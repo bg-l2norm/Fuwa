@@ -510,6 +510,11 @@ class FuwaApp(App):
         self.choice_btns = [self.query_one(f"#btn_{i}", Button) for i in range(3)]
         self.user_input = self.query_one("#user_input", Input)
 
+        import collections
+        self.mood_history = collections.deque(maxlen=40)
+        self.cpu_history = collections.deque(maxlen=15)
+        self.mem_history = collections.deque(maxlen=15)
+
         self.set_interval(0.5, self.update_animation)
         self.log_message("System", "Fuwa woke up!")
         self.observer.start()
@@ -532,25 +537,33 @@ class FuwaApp(App):
             import time
             import math
             mood_str = self.anim.mood
+            current_color = self.anim.get_current_color(mood_str)
+
+            if hasattr(self, 'mood_history'):
+                self.mood_history.append(current_color)
+                history_list = list(self.mood_history)
+                if len(history_list) < self.mood_history.maxlen:
+                    history_list = [current_color] * (self.mood_history.maxlen - len(history_list)) + history_list
+            else:
+                history_list = [current_color] * 40
+
             t = time.time() * 5
             wave_chars = "⠀⣀⣤⣶⣿"
 
-            # Complex 3-layer sine wave
+            # Create a full width wave from the sliding window
             wave = ""
-            for i in range(12):
-                v1 = math.sin(t * 0.5 + i * 0.5)
-                v2 = math.cos(t * 0.8 + i * 0.3)
-                v3 = math.sin(t * 1.2 - i * 0.2)
+            for i, color in enumerate(history_list):
+                v1 = math.sin(t * 0.5 + i * 0.2)
+                v2 = math.cos(t * 0.8 + i * 0.1)
+                v3 = math.sin(t * 1.2 - i * 0.15)
                 val = (v1 + v2 + v3 + 3) / 6.0 # Normalize 0 to 1
                 idx = min(len(wave_chars) - 1, max(0, int(val * len(wave_chars))))
-                color = "magenta" if i % 2 == 0 else "cyan"
-                wave += f"[bold {color}]{wave_chars[idx]}[/]"
+                wave += f"[{color}]{wave_chars[idx]}[/]"
 
-            styled_mood = f"Mood: {wave} [bold pink1]{mood_str}[/] {wave[::-1]}"
+            styled_mood = f"Mood History:\n{wave}\nCurrent: [{current_color}]{mood_str}[/]"
             self.query_one("#stat_mood", Label).update(styled_mood)
 
             # Set dynamic borders based on buddy color
-            current_color = self.anim.get_current_color(mood_str)
 
             self.query_one("#left_panel").styles.border = ("round", current_color)
 
@@ -661,11 +674,14 @@ class FuwaApp(App):
         import time
         import os
 
-        def generate_bar(percentage: float, color: str, width: int = 15) -> str:
-            percentage = max(0.0, min(100.0, percentage))
-            filled = int((percentage / 100.0) * width)
-            empty = width - filled
-            return f"[{color}]" + "⣿" * filled + "[/][grey50]" + "⣀" * empty + "[/]"
+        def generate_sparkline(history: list, color: str, width: int = 15) -> str:
+            chars = "⠀⣀⣤⣶⣿"
+            res = ""
+            padded = [0.0] * max(0, width - len(history)) + list(history)[-width:]
+            for val in padded:
+                idx = min(len(chars) - 1, max(0, int((val / 100.0) * len(chars))))
+                res += chars[idx]
+            return f"[{color}]{res}[/]"
 
         # Ensure we don't crash if Dashboard is not rendered or collapsed
         try:
@@ -682,8 +698,12 @@ class FuwaApp(App):
             # Estimate total memory or assume ~8GB to compute a small percentage
             # Since the process memory is typically tiny, we'll map to a generous cap (e.g. 512MB) to show some visual movement
             mem_pct = min(100.0, (mem_usage_mb / 512.0) * 100.0)
-            mem_bar = generate_bar(mem_pct, "cyan")
-            self.query_one("#stat_mem", Label).update(f"Memory Usage: ~{mem_usage_mb:.1f}MB\n{mem_bar} {mem_pct:.1f}%")
+            if hasattr(self, 'mem_history'):
+                self.mem_history.append(mem_pct)
+                mem_chart = generate_sparkline(list(self.mem_history), "cyan")
+            else:
+                mem_chart = generate_sparkline([mem_pct], "cyan")
+            self.query_one("#stat_mem", Label).update(f"Memory Usage: ~{mem_usage_mb:.1f}MB\n{mem_chart} {mem_pct:.1f}%")
 
             cpu_percent = "<1%"
             cpu_val = 0.0
@@ -694,8 +714,13 @@ class FuwaApp(App):
                 cpu_percent = f"{cpu_val:.1f}%"
             except Exception:
                 pass
-            cpu_bar = generate_bar(cpu_val, "magenta")
-            self.query_one("#stat_cpu", Label).update(f"Observer CPU: {cpu_percent}\n{cpu_bar} {cpu_percent}")
+
+            if hasattr(self, 'cpu_history'):
+                self.cpu_history.append(cpu_val)
+                cpu_chart = generate_sparkline(list(self.cpu_history), "magenta")
+            else:
+                cpu_chart = generate_sparkline([cpu_val], "magenta")
+            self.query_one("#stat_cpu", Label).update(f"Observer CPU: {cpu_percent}\n{cpu_chart}")
 
             # Buddy Stats
             self.query_one("#stat_heartbeats", Label).update(f"Heartbeats: {self.heartbeat_count}")
