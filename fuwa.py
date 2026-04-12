@@ -876,9 +876,10 @@ class FuwaApp(App):
         self.update_animation()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        user_choice = str(event.button.label)
-        self.log_message("You", user_choice)
-        self.handle_user_choice(user_choice)
+        if event.button.has_class("choice_btn"):
+            user_choice = str(event.button.label)
+            self.log_message("You", user_choice)
+            self.handle_user_choice(user_choice)
 
     def on_descendant_focus(self, event: DescendantFocus) -> None:
         if getattr(event.widget, "id", None) == "user_input":
