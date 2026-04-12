@@ -149,6 +149,7 @@ def do_first_run_setup(force_setup=False):
             config_data["model"] = model
             config_data["api_key"] = api_key
 
+        watch_folders = config_data.get("watch_folders", [os.path.expanduser('~')])
         if change_folders:
             home_dir = os.path.expanduser('~')
             console.print("\n[bold cyan]Select directories to observe:[/bold cyan]")
