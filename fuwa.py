@@ -567,12 +567,15 @@ class FuwaApp(App):
                 history_list = [history_list[0]] * (self.mood_history.maxlen - len(history_list)) + history_list
 
             # complex braille characters for wave mapping
-            wave_chars = "⠀⢀⡀⣀⣄⣤⣆⣶⣾⣿"
+            wave_chars = ["⠀", "⣀", "⣤", "⣶", "⣿"]
 
-            # Create a full width wave from the actual time-wise history
-            wave = ""
+            # Create a 3-line full width wave from the actual time-wise history
+            line_1 = ""
+            line_2 = ""
+            line_3 = ""
+
             for i, (m_str, color) in enumerate(history_list):
-                # map mood to a height for the wave.
+                # map mood to a height for the wave (0 to 12).
                 # normal is middle, excited/angry is high, sleepy is low
                 val = 0.5
                 m = m_str.upper()
@@ -583,9 +586,22 @@ class FuwaApp(App):
                 else:
                     val = 0.5
 
-                idx = min(len(wave_chars) - 1, max(0, int(val * len(wave_chars))))
-                wave += f"[{color}]{wave_chars[idx]}[/]"
+                # Total height 12: 4 levels per line over 3 lines
+                h = int(val * 12.0)
 
+                # Bottom line
+                idx_3 = min(4, max(0, h))
+                line_3 += f"[{color}]{wave_chars[idx_3]}[/]"
+
+                # Middle line
+                idx_2 = min(4, max(0, h - 4))
+                line_2 += f"[{color}]{wave_chars[idx_2]}[/]"
+
+                # Top line
+                idx_1 = min(4, max(0, h - 8))
+                line_1 += f"[{color}]{wave_chars[idx_1]}[/]"
+
+            wave = f"{line_1}\n{line_2}\n{line_3}"
             styled_mood = f"Mood History (Past Hour):\n{wave}\nCurrent: [{current_color}]{mood_str}[/]"
             self.query_one("#stat_mood", Label).update(styled_mood)
 
@@ -628,6 +644,7 @@ class FuwaApp(App):
         """Resets the companion's mood to NORMAL."""
         try:
             self.anim.set_mood("NORMAL")
+            self.record_mood_history()
         except Exception:
             pass
 
@@ -638,6 +655,7 @@ class FuwaApp(App):
             moods = [m.strip().upper() for m in match.group(1).split(",")]
             if moods:
                 self.anim.set_mood(moods[0])
+                self.record_mood_history()
                 def reset_timer():
                     if hasattr(self, "mood_reset_timer") and self.mood_reset_timer:
                         self.mood_reset_timer.stop()
@@ -743,14 +761,11 @@ class FuwaApp(App):
         import time
         import os
 
-        def generate_sparkline(history: list, color: str, width: int = 15) -> str:
-            chars = "⠀⢀⡀⣀⣄⣤⣆⣶⣾⣿"
-            res = ""
-            padded = [0.0] * max(0, width - len(history)) + list(history)[-width:]
-            for val in padded:
-                idx = min(len(chars) - 1, max(0, int((val / 100.0) * len(chars))))
-                res += chars[idx]
-            return f"[{color}]{res}[/]"
+        def generate_bar(pct: float, color: str, width: int = 15) -> str:
+            filled = int((pct / 100.0) * width)
+            empty = width - filled
+            res = f"[{color}]" + ("⣿" * filled) + "[/]" + "[#555555]" + ("⣀" * empty) + "[/]"
+            return res
 
         # Ensure we don't crash if Dashboard is not rendered or collapsed
         try:
@@ -769,9 +784,11 @@ class FuwaApp(App):
             mem_pct = min(100.0, (mem_usage_mb / 512.0) * 100.0)
             if hasattr(self, 'mem_history'):
                 self.mem_history.append(mem_pct)
-                mem_chart = generate_sparkline(list(self.mem_history), "cyan")
             else:
-                mem_chart = generate_sparkline([mem_pct], "cyan")
+                # keep mem_history to not crash other usages if any
+                pass
+
+            mem_chart = generate_bar(mem_pct, "cyan")
             self.query_one("#stat_mem", Label).update(f"Memory Usage: ~{mem_usage_mb:.1f}MB\n{mem_chart} {mem_pct:.1f}%")
 
             cpu_percent = "<1%"
@@ -786,9 +803,10 @@ class FuwaApp(App):
 
             if hasattr(self, 'cpu_history'):
                 self.cpu_history.append(cpu_val)
-                cpu_chart = generate_sparkline(list(self.cpu_history), "magenta")
             else:
-                cpu_chart = generate_sparkline([cpu_val], "magenta")
+                pass
+
+            cpu_chart = generate_bar(cpu_val, "magenta")
             self.query_one("#stat_cpu", Label).update(f"Observer CPU: {cpu_percent}\n{cpu_chart}")
 
             # Buddy Stats
@@ -803,7 +821,11 @@ class FuwaApp(App):
             self.query_one("#stat_files_observed", Label).update(f"Context Size: {files_observed} files")
 
             est_tokens = sum(len(m) for m in memories.values()) // 4 + sum(len(h) for h in self.chat_history) // 4
-            self.query_one("#stat_tokens", Label).update(f"Est. Tokens: ~{est_tokens}")
+            max_tokens = self.config.get("max_context_tokens", 8192)
+            token_pct = min(100.0, (est_tokens / float(max_tokens)) * 100.0)
+            token_chart = generate_bar(token_pct, "yellow")
+
+            self.query_one("#stat_tokens", Label).update(f"Est. Tokens: ~{est_tokens}/{max_tokens}\n{token_chart} {token_pct:.1f}%")
 
             # Simple latency dummy
             import math
