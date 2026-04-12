@@ -5,9 +5,10 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
 class ChangeHandler(FileSystemEventHandler):
-    def __init__(self, recent_events):
+    def __init__(self, recent_events, on_change_callback=None):
         self.recent_events = recent_events
         self.total_events = 0
+        self.on_change_callback = on_change_callback
         super().__init__()
 
     def process(self, event):
@@ -16,7 +17,13 @@ class ChangeHandler(FileSystemEventHandler):
 
         # Ignore git and common ignore patterns
         path_str = str(event.src_path)
-        if ".git" in path_str or "__pycache__" in path_str:
+        ignore_patterns = [".git", "__pycache__", "venv", "node_modules", ".venv", "env"]
+        if any(p in path_str for p in ignore_patterns):
+            return
+
+        # Ignore binary extensions
+        binary_exts = [".png", ".jpg", ".jpeg", ".gif", ".ico", ".pyc", ".so", ".dll", ".exe", ".bin"]
+        if any(path_str.endswith(ext) for ext in binary_exts):
             return
 
         try:
@@ -43,6 +50,9 @@ class ChangeHandler(FileSystemEventHandler):
         self.recent_events.append(event_data)
         self.total_events += 1
 
+        if self.on_change_callback:
+            self.on_change_callback()
+
     def on_modified(self, event):
         self.process(event)
 
@@ -53,12 +63,12 @@ class ChangeHandler(FileSystemEventHandler):
         self.process(event)
 
 class FileSystemObserver:
-    def __init__(self, watch_folders):
+    def __init__(self, watch_folders, on_change_callback=None):
         self.watch_folders = watch_folders
         # Deque to keep only the last 50 events to avoid overflowing LLM context
         self.recent_events = deque(maxlen=50)
         self.observer = Observer()
-        self.handler = ChangeHandler(self.recent_events)
+        self.handler = ChangeHandler(self.recent_events, on_change_callback)
 
     def start(self):
         if not self.watch_folders:

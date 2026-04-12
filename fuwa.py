@@ -134,16 +134,60 @@ def do_first_run_setup():
 
         console.print("\n[bold green]✅ Setup complete![/bold green]\n")
 
-        # Loading animation
-        with Progress(
-            SpinnerColumn(spinner_name="dots"),
-            TextColumn("[bold cyan]Waking up Fuwa...[/bold cyan]"),
-            transient=True
-        ) as progress:
-            task = progress.add_task("waking", total=10)
-            for _ in range(10):
-                time.sleep(0.1)
-                progress.update(task, advance=1)
+        from memory import get_memory, update_memory
+        from llm import summarize_file
+
+        # Pre-scan the watched folders and build the initial memory
+        watch_folders = config_data.get("watch_folders", ["."])
+        ignore_dirs = {".git", "venv", "__pycache__", "node_modules", ".venv", "env"}
+        binary_exts = {".png", ".jpg", ".jpeg", ".gif", ".ico", ".pyc", ".so", ".dll", ".exe", ".bin"}
+
+        files_to_scan = []
+        for folder in watch_folders:
+            base_path = os.path.abspath(folder)
+            for root, dirs, files in os.walk(base_path):
+                dirs[:] = [d for d in dirs if d not in ignore_dirs]
+                for file in files:
+                    _, ext = os.path.splitext(file)
+                    if ext.lower() in binary_exts:
+                        continue
+                    files_to_scan.append(os.path.join(root, file))
+
+        if files_to_scan:
+            with Progress(
+                SpinnerColumn(spinner_name="dots"),
+                TextColumn("[bold cyan]Observing workspace ({task.completed}/{task.total})...[/bold cyan]"),
+                transient=True
+            ) as progress:
+                task = progress.add_task("scanning", total=len(files_to_scan))
+                for file_path in files_to_scan:
+                    try:
+                        try:
+                            rel_path = os.path.relpath(file_path, start=os.getcwd())
+                        except ValueError:
+                            rel_path = file_path
+
+                        # Only summarize if not already in memory
+                        if not get_memory(rel_path):
+                            with open(file_path, "r", encoding="utf-8") as f:
+                                content = f.read(5000)
+                            if content.strip():
+                                summary = summarize_file(rel_path, content)
+                                update_memory(rel_path, summary)
+                    except Exception as e:
+                        pass
+                    progress.update(task, advance=1)
+        else:
+            # Fallback loading animation
+            with Progress(
+                SpinnerColumn(spinner_name="dots"),
+                TextColumn("[bold cyan]Waking up Fuwa...[/bold cyan]"),
+                transient=True
+            ) as progress:
+                task = progress.add_task("waking", total=10)
+                for _ in range(10):
+                    time.sleep(0.1)
+                    progress.update(task, advance=1)
 
 class SettingsModal(ModalScreen):
     CSS = """
@@ -355,7 +399,7 @@ class FuwaApp(App):
         self.config = load_config()
         self.anim = AxolotlAnimation(buddy_size=self.config.get("buddy_size", "normal"), silent=False)
         self.chat_history = []
-        self.observer = FileSystemObserver(self.config.get("watch_folders", ["."]))
+        self.observer = FileSystemObserver(self.config.get("watch_folders", ["."]), on_change_callback=self.on_file_changed)
         self.heartbeat_timer = None
         self.axolotl_view = None
         self.chat_log_view = None
@@ -365,6 +409,31 @@ class FuwaApp(App):
         import time
         self.session_start_time = time.time()
         self.heartbeat_count = 0
+        self.last_file_change_time = 0
+        self.debounce_timer = None
+
+    def on_file_changed(self):
+        import time
+        self.last_file_change_time = time.time()
+
+    def _check_debounce(self):
+        import time
+        # If a file was changed recently (more than 2 seconds ago), trigger heartbeat
+        if self.last_file_change_time > 0 and (time.time() - self.last_file_change_time) > 2.0:
+            self.last_file_change_time = 0  # Reset
+            # Also reset the regular heartbeat timer if it exists to prevent double firing
+            self._reset_heartbeat_timer()
+            self.trigger_heartbeat()
+
+    def _reset_heartbeat_timer(self):
+        if self.heartbeat_timer:
+            self.heartbeat_timer.stop()
+            self.heartbeat_timer = None
+
+        rpm = self.config.get("requests_per_min", 0)
+        if rpm > 0:
+            interval = 60.0 / rpm
+            self.heartbeat_timer = self.set_interval(interval, self.trigger_heartbeat)
 
     def compose(self) -> ComposeResult:
         yield Header("Fuwa - Your Terminal Buddy")
@@ -414,16 +483,14 @@ class FuwaApp(App):
         self.user_input = self.query_one("#user_input", Input)
 
         self.set_interval(0.5, self.update_animation)
+        self.debounce_timer = self.set_interval(1.0, self._check_debounce)
         self.log_message("System", "Fuwa woke up!")
         self.observer.start()
 
         # Set initial deterministic choices
         self.update_choices(["*Stare blankly*", "*Go back to work*", "*Poke axolotl*"])
 
-        rpm = self.config.get("requests_per_min", 0)
-        if rpm > 0:
-            interval = 60.0 / rpm
-            self.heartbeat_timer = self.set_interval(interval, self.trigger_heartbeat)
+        self._reset_heartbeat_timer()
 
         self.trigger_heartbeat() # Initial trigger
 
