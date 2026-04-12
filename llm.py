@@ -80,20 +80,38 @@ def simple_completion(messages, model, provider, api_key, max_tokens=100, respon
 
     raise Exception(f"Unsupported provider: {provider}")
 
-def summarize_file(filename: str, content: str) -> str:
-    """Generates a high-level summary of a file's contents to capture intent/emotion."""
+
+def _parse_json_response(content: str) -> dict:
+    import json
+    content = content.strip()
+    if "```json" in content:
+        content = content.split("```json")[1].split("```")[0].strip()
+    elif "```" in content:
+        content = content.split("```")[1].split("```")[0].strip()
+    try:
+        return json.loads(content)
+    except Exception as e:
+        print(f"Error parsing JSON: {e}")
+        return {}
+
+def summarize_paths_batch(paths: list[str]) -> dict:
+    """Generates high-level summaries based ONLY on file paths/names."""
+    if not paths:
+        return {}
     kwargs = _get_api_kwargs()
 
     system_prompt = (
-        "You are an AI assistant that summarizes codebase files to capture the user's "
-        "high-level intent and emotional state. You don't care about specific code syntax "
-        "or minor details. Just give a brief (1-3 sentences) description of what the file "
-        "is about, and what the user is likely trying to achieve. Keep it very short."
+        "You are an AI assistant analyzing a project's structure. "
+        "Given a list of file paths, provide a brief (1 sentence) guess of what each file is for, "
+        "based purely on its name and directory structure. "
+        "Return the result ONLY as a valid JSON object where keys are the file paths and values are the summaries."
     )
 
-    user_message = f"File: {filename}\nContent:\n```\n{content}\n```"
+    paths_str = "\n".join(paths)
+    user_message = f"File paths:\n{paths_str}"
 
     try:
+        response_format = {"type": "json_object"} if "gpt" in kwargs["model"] else None
         response = simple_completion(
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -102,13 +120,50 @@ def summarize_file(filename: str, content: str) -> str:
             model=kwargs["model"],
             provider=kwargs["provider"],
             api_key=kwargs["api_key"],
-            max_tokens=100
+            max_tokens=1500,
+            response_format=response_format
         )
-        return response.strip()
+        return _parse_json_response(response)
     except Exception as e:
-        print(f"Error summarizing file: {e}")
-        return "Failed to summarize file."
+        print(f"Error summarizing paths batch: {e}")
+        return {}
 
+def summarize_files_batch(files_data: list[dict]) -> dict:
+    """Generates summaries for a batch of files using their partial content."""
+    if not files_data:
+        return {}
+    kwargs = _get_api_kwargs()
+
+    system_prompt = (
+        "You are an AI assistant that summarizes codebase files to capture the user's high-level intent. "
+        "Given a list of files and their partial contents, provide a brief (1-3 sentences) description of what "
+        "each file is about. "
+        "Return the result ONLY as a valid JSON object where keys are the file paths and values are the summaries."
+    )
+
+    user_parts = []
+    for fd in files_data:
+        user_parts.append(f"File: {fd['filename']}\nContent:\n```\n{fd['content']}\n```\n")
+
+    user_message = "\n".join(user_parts)
+
+    try:
+        response_format = {"type": "json_object"} if "gpt" in kwargs["model"] else None
+        response = simple_completion(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message}
+            ],
+            model=kwargs["model"],
+            provider=kwargs["provider"],
+            api_key=kwargs["api_key"],
+            max_tokens=2500,
+            response_format=response_format
+        )
+        return _parse_json_response(response)
+    except Exception as e:
+        print(f"Error summarizing files batch: {e}")
+        return {}
 
 def generate_comment(observations: str, personality: str, file_memories: str = "") -> str:
     """Generates a blurt from the axolotl based on recent observations and memories."""
@@ -200,6 +255,8 @@ def process_interaction(interaction: str, recent_context: str, personality: str)
     """Processes user interaction and generates axolotl's response, potentially updating personality."""
     kwargs = _get_api_kwargs()
     from config import update_config
+    import subprocess
+    from memory import update_memory
 
     available_moods = AxolotlAnimation.get_available_moods()
     moods_str = ", ".join(f"[MOOD: {m}]" for m in available_moods)
@@ -208,7 +265,11 @@ def process_interaction(interaction: str, recent_context: str, personality: str)
         "Respond in character to the user's action/dialogue. Be emotional, reactive. If they chose to slack off, amplify the guilt! "
         "If they chose to work, act satisfied but demanding. Short response (1-2 sentences). "
         "Include a mood tag at the VERY BEGINNING of your response. "
-        "Output ONLY the text."
+        "Output ONLY the text. "
+        "You have access to tools! "
+        "If you want to read files or run read-only terminal commands (e.g. ls, cat, grep), output [RUN: command] in your response. "
+        "If you want to write a summary to your memory, output [MEM: filename | summary] in your response. "
+        "If you use a tool, you will get the result back to formulate your next response."
     )
 
     user_message = (
@@ -220,18 +281,59 @@ def process_interaction(interaction: str, recent_context: str, personality: str)
         f"Recent context:\n{recent_context}"
     )
 
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_message}
+    ]
+
     try:
-        ai_response = simple_completion(
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message}
-            ],
-            model=kwargs["model"],
-            provider=kwargs["provider"],
-            api_key=kwargs["api_key"],
-            max_tokens=150
-        )
-        ai_response = ai_response.strip()
+        ai_response = ""
+        for _ in range(3):
+            ai_response = simple_completion(
+                messages=messages,
+                model=kwargs["model"],
+                provider=kwargs["provider"],
+                api_key=kwargs["api_key"],
+                max_tokens=150
+            ).strip()
+
+            cmd_match = re.search(r'\[RUN:\s*(.*?)\]', ai_response)
+            mem_match = re.search(r'\[MEM:\s*(.*?)\s*\|\s*(.*?)\]', ai_response)
+
+            if cmd_match:
+                cmd = cmd_match.group(1)
+                try:
+                    # Execute read-only tools safely
+                    import shlex
+                    args = shlex.split(cmd)
+                    if not args:
+                        raise Exception("Empty command.")
+
+                    allowed_commands = {'ls', 'cat', 'grep', 'head', 'tail', 'find', 'pwd'}
+                    if args[0] not in allowed_commands:
+                        raise Exception(f"Command '{args[0]}' is not allowed. Only read-only commands ({', '.join(allowed_commands)}) are permitted.")
+
+                    result = subprocess.run(args, capture_output=True, text=True, timeout=5)
+                    output = (result.stdout + result.stderr).strip()
+                    if not output:
+                        output = "Command executed with no output."
+                except Exception as e:
+                    output = str(e)
+
+                messages.append({"role": "assistant", "content": ai_response})
+                messages.append({"role": "user", "content": f"Output of {cmd}:\n{output[:1000]}\nNow respond to the user."})
+                continue
+
+            elif mem_match:
+                key = mem_match.group(1).strip()
+                val = mem_match.group(2).strip()
+                update_memory(key, val)
+
+                messages.append({"role": "assistant", "content": ai_response})
+                messages.append({"role": "user", "content": f"Memory updated for {key}.\nNow respond to the user."})
+                continue
+
+            break
 
         # Trigger an update of the personality based on this interaction
         update_prompt = (

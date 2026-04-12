@@ -41,6 +41,13 @@ def update_memory(filename: str, summary: str):
     memory_data[filename] = summary
     save_memory(memory_data)
 
+
+def update_memories(updates: dict):
+    memory_data = load_memory()
+    memory_data.update(updates)
+    save_memory(memory_data)
+
+
 def get_memory(filename: str) -> str:
     memory_data = load_memory()
     return memory_data.get(filename, "")
