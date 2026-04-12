@@ -533,7 +533,7 @@ class FuwaApp(App):
             import math
             mood_str = self.anim.mood
             t = time.time() * 5
-            wave_chars = " ░▒▓█"
+            wave_chars = "⠀⣀⣤⣶⣿"
 
             # Complex 3-layer sine wave
             wave = ""
@@ -662,6 +662,13 @@ class FuwaApp(App):
     def update_dashboard(self) -> None:
         import time
         import os
+
+        def generate_bar(percentage: float, color: str, width: int = 15) -> str:
+            percentage = max(0.0, min(100.0, percentage))
+            filled = int((percentage / 100.0) * width)
+            empty = width - filled
+            return f"[{color}]" + "⣿" * filled + "[/][grey50]" + "⣀" * empty + "[/]"
+
         # Ensure we don't crash if Dashboard is not rendered or collapsed
         try:
             # System Stats
@@ -673,15 +680,24 @@ class FuwaApp(App):
             import resource
             mem_usage_kb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
             mem_usage_mb = mem_usage_kb / 1024.0
-            self.query_one("#stat_mem", Label).update(f"Memory Usage: ~{mem_usage_mb:.1f}MB")
+
+            # Estimate total memory or assume ~8GB to compute a small percentage
+            # Since the process memory is typically tiny, we'll map to a generous cap (e.g. 512MB) to show some visual movement
+            mem_pct = min(100.0, (mem_usage_mb / 512.0) * 100.0)
+            mem_bar = generate_bar(mem_pct, "cyan")
+            self.query_one("#stat_mem", Label).update(f"Memory Usage: ~{mem_usage_mb:.1f}MB\n{mem_bar} {mem_pct:.1f}%")
 
             cpu_percent = "<1%"
+            cpu_val = 0.0
             try:
                 load1, _, _ = os.getloadavg()
-                cpu_percent = f"{load1:.1f}%"
+                cpu_count = os.cpu_count() or 1
+                cpu_val = min(100.0, (load1 / cpu_count) * 100.0)
+                cpu_percent = f"{cpu_val:.1f}%"
             except Exception:
                 pass
-            self.query_one("#stat_cpu", Label).update(f"Observer CPU: {cpu_percent}")
+            cpu_bar = generate_bar(cpu_val, "magenta")
+            self.query_one("#stat_cpu", Label).update(f"Observer CPU: {cpu_percent}\n{cpu_bar} {cpu_percent}")
 
             # Buddy Stats
             self.query_one("#stat_heartbeats", Label).update(f"Heartbeats: {self.heartbeat_count}")
