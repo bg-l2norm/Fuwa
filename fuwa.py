@@ -11,11 +11,6 @@ class Dashboard(Container):
     def compose(self) -> ComposeResult:
         yield Label("🌸 Fuwa's Dashboard 🌸", id="dashboard_title")
         with Horizontal():
-            with Vertical(classes="dash_col", id="dash_sys"):
-                yield Label("💻 System Stats", classes="dash_header")
-                yield Label("Uptime: 00:00:00", id="stat_active_time")
-                yield Label("Memory Usage: ~124MB", id="stat_mem")
-                yield Label("Observer CPU: <1%", id="stat_cpu")
             with Vertical(classes="dash_col", id="dash_buddy"):
                 yield Label("🐾 Buddy Stats", classes="dash_header")
                 yield Label("Mood: NORMAL", id="stat_mood")
@@ -27,6 +22,11 @@ class Dashboard(Container):
                 yield Label("Est. Tokens: ~0", id="stat_tokens")
                 yield Label("Context Size: 0 files", id="stat_files_observed")
                 yield Label("Avg Latency: ~1.2s", id="stat_latency")
+            with Vertical(classes="dash_col", id="dash_sys"):
+                yield Label("💻 System Stats", classes="dash_header")
+                yield Label("Uptime: 00:00:00", id="stat_active_time")
+                yield Label("Memory Usage: ~124MB", id="stat_mem")
+                yield Label("Observer CPU: <1%", id="stat_cpu")
 
 import os
 from axolotl import AxolotlAnimation
@@ -167,7 +167,7 @@ def do_first_run_setup():
 
         console.print("\n[bold green]✅ Setup complete![/bold green]\n")
 
-        # Walk directories and generate first-pass summaries based ONLY on paths
+        # Walk directories and generate basic initial memory to avoid LLM API costs on startup
         console.print("[bold cyan]Scanning directories to understand your project...[/bold cyan]")
 
         ignored_patterns = [
@@ -185,10 +185,7 @@ def do_first_run_setup():
         ) as progress:
             task = progress.add_task("scanning", total=None)
 
-            # Temporary override of api key in env if needed for summarize_paths_batch
-            os.environ["FUWA_API_KEY"] = api_key
-
-            paths_to_summarize = []
+            summaries = {}
             for folder in watch_folders:
                 folder_path = os.path.abspath(folder)
                 if not os.path.isdir(folder_path):
@@ -209,27 +206,11 @@ def do_first_run_setup():
                         except ValueError:
                             rel_path = filepath
 
-                        paths_to_summarize.append(rel_path)
+                        summaries[rel_path] = f"File {rel_path} discovered during initial scan."
 
-            # Batch summarize paths
-            if paths_to_summarize:
-                batch_size = 50
-                batches = [paths_to_summarize[i:i + batch_size] for i in range(0, len(paths_to_summarize), batch_size)]
-
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-                    futures = {executor.submit(summarize_paths_batch, batch): batch for batch in batches}
-                    for future in concurrent.futures.as_completed(futures):
-                        try:
-                            summaries = future.result()
-                            if summaries:
-                                from memory import update_memories
-                                update_memories(summaries)
-                        except Exception as e:
-                            pass
-
-            if "FUWA_API_KEY" in os.environ:
-                del os.environ["FUWA_API_KEY"]
+            if summaries:
+                from memory import update_memories
+                update_memories(summaries)
 
         # Loading animation
         with Progress(
@@ -458,6 +439,7 @@ class FuwaApp(App):
         self.chat_log_view = None
         self.choice_btns = []
         self.initial_choice_made = False
+        self.choice_clicks = 0
 
         import time
         self.session_start_time = time.time()
@@ -511,13 +493,17 @@ class FuwaApp(App):
         self.user_input = self.query_one("#user_input", Input)
 
         import collections
-        self.mood_history = collections.deque(maxlen=40)
+        self.mood_history = collections.deque(maxlen=60)  # past 1 hour if updated every minute
         self.cpu_history = collections.deque(maxlen=15)
         self.mem_history = collections.deque(maxlen=15)
 
         self.set_interval(0.5, self.update_animation)
+        self.set_interval(60.0, self.record_mood_history)
         self.log_message("System", "Fuwa woke up!")
         self.observer.start()
+
+        # initial mood record
+        self.record_mood_history()
 
         # Set initial deterministic choices
         self.update_choices(["*Stare blankly*", "*Go back to work*", "*Poke axolotl*"])
@@ -531,36 +517,51 @@ class FuwaApp(App):
     def on_unmount(self) -> None:
         self.observer.stop()
 
+    def record_mood_history(self) -> None:
+        try:
+            mood_str = self.anim.mood
+            current_color = self.anim.get_current_color(mood_str)
+            if hasattr(self, 'mood_history'):
+                self.mood_history.append((mood_str, current_color))
+        except Exception:
+            pass
+
     def update_animation(self) -> None:
         self.axolotl_view.update(self.anim.next_frame())
         try:
-            import time
-            import math
             mood_str = self.anim.mood
             current_color = self.anim.get_current_color(mood_str)
 
-            if hasattr(self, 'mood_history'):
-                self.mood_history.append(current_color)
+            if hasattr(self, 'mood_history') and len(self.mood_history) > 0:
                 history_list = list(self.mood_history)
-                if len(history_list) < self.mood_history.maxlen:
-                    history_list = [current_color] * (self.mood_history.maxlen - len(history_list)) + history_list
             else:
-                history_list = [current_color] * 40
+                history_list = [(mood_str, current_color)]
 
-            t = time.time() * 5
-            wave_chars = "⠀⣀⣤⣶⣿"
+            if len(history_list) < self.mood_history.maxlen:
+                # pad start
+                history_list = [history_list[0]] * (self.mood_history.maxlen - len(history_list)) + history_list
 
-            # Create a full width wave from the sliding window
+            # complex braille characters for wave mapping
+            wave_chars = "⠀⢀⡀⣀⣄⣤⣆⣶⣾⣿"
+
+            # Create a full width wave from the actual time-wise history
             wave = ""
-            for i, color in enumerate(history_list):
-                v1 = math.sin(t * 0.5 + i * 0.2)
-                v2 = math.cos(t * 0.8 + i * 0.1)
-                v3 = math.sin(t * 1.2 - i * 0.15)
-                val = (v1 + v2 + v3 + 3) / 6.0 # Normalize 0 to 1
+            for i, (m_str, color) in enumerate(history_list):
+                # map mood to a height for the wave.
+                # normal is middle, excited/angry is high, sleepy is low
+                val = 0.5
+                m = m_str.upper()
+                if m in ["ANGRY", "EXCITED", "HAPPY"]:
+                    val = 0.9
+                elif m in ["SLEEPY", "SAD", "BORED"]:
+                    val = 0.2
+                else:
+                    val = 0.5
+
                 idx = min(len(wave_chars) - 1, max(0, int(val * len(wave_chars))))
                 wave += f"[{color}]{wave_chars[idx]}[/]"
 
-            styled_mood = f"Mood History:\n{wave}\nCurrent: [{current_color}]{mood_str}[/]"
+            styled_mood = f"Mood History (Past Hour):\n{wave}\nCurrent: [{current_color}]{mood_str}[/]"
             self.query_one("#stat_mood", Label).update(styled_mood)
 
             # Set dynamic borders based on buddy color
@@ -598,6 +599,13 @@ class FuwaApp(App):
                 btn.label = "..."
                 btn.disabled = True
 
+    def reset_mood(self) -> None:
+        """Resets the companion's mood to NORMAL."""
+        try:
+            self.anim.set_mood("NORMAL")
+        except Exception:
+            pass
+
     def extract_and_set_mood(self, text: str) -> str:
         """Extracts mood tag like [MOOD: HAPPY], sets the mood, and returns text without the tag."""
         match = re.search(r"\[MOOD:\s*([a-zA-Z0-9_,\s]+)\]", text, re.IGNORECASE)
@@ -605,6 +613,17 @@ class FuwaApp(App):
             moods = [m.strip().upper() for m in match.group(1).split(",")]
             if moods:
                 self.anim.set_mood(moods[0])
+                def reset_timer():
+                    if hasattr(self, "mood_reset_timer") and self.mood_reset_timer:
+                        self.mood_reset_timer.stop()
+                    self.mood_reset_timer = self.set_timer(5.0, self.reset_mood)
+
+                try:
+                    import asyncio
+                    asyncio.get_running_loop()
+                    reset_timer()
+                except RuntimeError:
+                    self.call_from_thread(reset_timer)
             text = re.sub(r"\[MOOD:\s*[a-zA-Z0-9_,\s]+\]\s*", "", text, flags=re.IGNORECASE).strip()
         return text
 
@@ -615,6 +634,17 @@ class FuwaApp(App):
         # Early return if no events, this is the heartbeat signal
         if not events:
             return
+
+        # If choices were disabled, regenerate them now because the user is active
+        needs_unlock = (self.choice_clicks >= 2)
+
+        self.choice_clicks = 0  # reset choices since user is active
+        if hasattr(self, "unlock_timer") and self.unlock_timer:
+            self.unlock_timer.stop()
+            self.unlock_timer = None
+
+        if needs_unlock:
+            self._unlock_choices_worker()
 
         obs_str = self.observer.format_observations(events)
         personality = self.config.get("personality", "")
@@ -675,7 +705,7 @@ class FuwaApp(App):
         import os
 
         def generate_sparkline(history: list, color: str, width: int = 15) -> str:
-            chars = "⠀⣀⣤⣶⣿"
+            chars = "⠀⢀⡀⣀⣄⣤⣆⣶⣾⣿"
             res = ""
             padded = [0.0] * max(0, width - len(history)) + list(history)[-width:]
             for val in padded:
@@ -743,10 +773,10 @@ class FuwaApp(App):
         except Exception:
             pass
 
-    def disable_buttons(self) -> None:
+    def disable_buttons(self, label: str = "Thinking...") -> None:
         for btn in self.choice_btns:
             btn.disabled = True
-            btn.label = "Thinking..."
+            btn.label = label
 
     def action_select_choice(self, choice_num: int) -> None:
         if 1 <= choice_num <= len(self.choice_btns):
@@ -810,11 +840,25 @@ class FuwaApp(App):
             self.log_message("You", user_choice)
             self.handle_user_choice(user_choice)
 
+    def _start_unlock_timer(self) -> None:
+        if hasattr(self, "unlock_timer") and self.unlock_timer:
+            self.unlock_timer.stop()
+        self.unlock_timer = self.set_timer(120.0, self._unlock_choices_worker)
+
+    @work(exclusive=True, thread=True)
+    def _unlock_choices_worker(self) -> None:
+        self.choice_clicks = 0
+        personality = self.config.get("personality", "")
+        context = "\n".join(self.chat_history[-5:])
+        choices = generate_choices(context, personality)
+        self.call_from_thread(self.update_choices, choices)
+
     @work(exclusive=True, thread=True)
     def handle_user_choice(self, user_choice: str) -> None:
         self.call_from_thread(self.disable_buttons)
 
         self.initial_choice_made = True
+        self.choice_clicks += 1
 
         personality = self.config.get("personality", "")
         context = "\n".join(self.chat_history[-5:])
@@ -823,13 +867,18 @@ class FuwaApp(App):
         response = self.extract_and_set_mood(response)
         self.call_from_thread(self.log_message, "Fuwa", response)
 
-        # Generate new choices based on this new context, manually appending the new response so it has context
-        history_copy = self.chat_history.copy()
-        history_copy.append(f"Fuwa: {response}")
-        new_context = "\n".join(history_copy[-5:])
+        if self.choice_clicks >= 2:
+            self.call_from_thread(self.disable_buttons, "Get back to work!")
+            self.call_from_thread(self.log_message, "System", "Fuwa is watching you. Go write some code!")
+            self.call_from_thread(self._start_unlock_timer)
+        else:
+            # Generate new choices based on this new context, manually appending the new response so it has context
+            history_copy = self.chat_history.copy()
+            history_copy.append(f"Fuwa: {response}")
+            new_context = "\n".join(history_copy[-5:])
 
-        choices = generate_choices(new_context, personality)
-        self.call_from_thread(self.update_choices, choices)
+            choices = generate_choices(new_context, personality)
+            self.call_from_thread(self.update_choices, choices)
 
 if __name__ == "__main__":
     do_first_run_setup()
