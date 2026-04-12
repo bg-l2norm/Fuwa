@@ -474,6 +474,7 @@ class FuwaApp(App):
         import time
         self.session_start_time = time.time()
         self.heartbeat_count = 0
+        self.is_first_heartbeat = True
 
     def compose(self) -> ComposeResult:
         yield Header("Fuwa - Your Terminal Buddy")
@@ -660,9 +661,13 @@ class FuwaApp(App):
     @work(exclusive=True, thread=True)
     def trigger_heartbeat(self) -> None:
         events = self.observer.get_recent_events()
+        is_startup = getattr(self, "is_first_heartbeat", False)
+
+        if is_startup:
+            self.is_first_heartbeat = False
 
         # Early return if no events, this is the heartbeat signal
-        if not events:
+        if not events and not is_startup:
             return
 
         # If choices were disabled, regenerate them now because the user is active
@@ -704,7 +709,7 @@ class FuwaApp(App):
                 print(f"Error in batch summarizing files: {e}")
 
         # Disable buttons while generating
-        if self.initial_choice_made:
+        if self.initial_choice_made or is_startup:
             self.call_from_thread(self.disable_buttons)
 
         # Get relevant context from local vector DB instead of all memories
@@ -712,9 +717,19 @@ class FuwaApp(App):
 
         # Use recent events to build a search query
         query_text = " ".join([e["filename"] for e in events])
+        if is_startup and not query_text:
+            query_text = "project" # Generic search for initial scan
         memories = search_memory(query_text, top_k=5)
 
-        comment = generate_comment(obs_str, personality, memories)
+        if is_startup:
+            self.initial_choice_made = True
+            system_prompt = "System: The application has just started. Proactively greet the user and set yourself up!"
+            if memories:
+                system_prompt += f"\nInitial memories of the project:\n{memories}"
+            comment = process_interaction(system_prompt, obs_str, personality, is_startup=True)
+        else:
+            comment = generate_comment(obs_str, personality, memories)
+
         comment = self.extract_and_set_mood(comment)
         self.call_from_thread(self.log_message, "Fuwa", comment)
 

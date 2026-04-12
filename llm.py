@@ -273,7 +273,7 @@ def generate_choices(recent_context: str, personality: str) -> list[str]:
         print(f"Error generating choices: {e}")
         return ["*Stare blankly*", "*Go back to work*", "*Poke axolotl*"]
 
-def process_interaction(interaction: str, recent_context: str, personality: str) -> str:
+def process_interaction(interaction: str, recent_context: str, personality: str, is_startup: bool = False) -> str:
     """Processes user interaction and generates axolotl's response, potentially updating personality."""
     kwargs = _get_api_kwargs()
     from config import update_config
@@ -324,11 +324,28 @@ def process_interaction(interaction: str, recent_context: str, personality: str)
     if user_md_content:
         user_message += f"Information about the user and their intents (USER):\n```\n{user_md_content}\n```\n\n"
 
-    user_message += (
-        "The user just chose this action/dialogue:\n"
-        f"> {interaction}\n\n"
-        f"Recent context:\n{recent_context}"
-    )
+    if is_startup:
+        bootstrap_content = ""
+        if os.path.exists("BOOTSTRAP.md"):
+            try:
+                with open("BOOTSTRAP.md", "r", encoding="utf-8") as f:
+                    bootstrap_content = f.read().strip()
+            except Exception:
+                pass
+        if bootstrap_content:
+            user_message += f"Startup Instructions (BOOTSTRAP):\n```\n{bootstrap_content}\n```\n\n"
+
+        user_message += (
+            "This is the application startup! Proceed to proactively greet the user and follow the BOOTSTRAP instructions!\n\n"
+            f"Here is some initial context about the project:\n{interaction}\n\n"
+            f"Recent context:\n{recent_context}"
+        )
+    else:
+        user_message += (
+            "The user just chose this action/dialogue:\n"
+            f"> {interaction}\n\n"
+            f"Recent context:\n{recent_context}"
+        )
 
     messages = [
         {"role": "system", "content": system_prompt},
