@@ -172,12 +172,10 @@ class AxolotlAnimation:
                     sh_filepath = os.path.join(ansi_dir, sh_filename)
                     if os.path.exists(sh_filepath):
                         with open(sh_filepath, "r", encoding="utf-8") as f:
-                            for line in f:
-                                if "base64" in line and "echo \"" in line:
-                                    b64_str = line.split('echo "')[1].split('" | base64')[0]
-                                    ansi_str = base64.b64decode(b64_str).decode('utf-8')
-                                    self.frames[mood_str].append(Text.from_ansi(ansi_str))
-                                    break
+                            content = f.read()
+                            if "<< 'EOF'" in content:
+                                ansi_str = content.split("<< 'EOF'\n")[1].split("\nEOF")[0]
+                                self.frames[mood_str].append(Text.from_ansi(ansi_str))
                 except Exception as e:
                     print(f"Failed to load {filepath}: {e}")
 

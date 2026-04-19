@@ -247,7 +247,9 @@ def convert_and_save_script(image_path, sh_path, target_width=40, crop_box=None)
     with open(sh_path, "w", encoding="utf-8") as f:
         f.write("#!/bin/bash\n")
         f.write(f"# md5: {file_hash}\n")
-        f.write(f"echo \"{base64_encoded}\" | base64 --decode\n")
+        f.write("cat << 'EOF'\n")
+        f.write(ansi_str)
+        f.write("\nEOF\n")
 
     os.chmod(sh_path, 0o755)
     return True
