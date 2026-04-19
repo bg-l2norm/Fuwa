@@ -1,7 +1,6 @@
 import pytest
 from textual.widgets import Button
 from textual.containers import VerticalScroll
-from textual.widgets import Static
 from fuwa import FuwaApp
 
 @pytest.mark.asyncio
