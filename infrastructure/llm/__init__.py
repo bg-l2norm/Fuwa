@@ -66,7 +66,6 @@ def simple_completion(messages, model, provider, api_key, max_tokens=100, respon
 
 
 def _parse_json_response(content: str) -> dict:
-    import json
     content = content.strip()
     if "```json" in content:
         content = content.split("```json")[1].split("```")[0].strip()
