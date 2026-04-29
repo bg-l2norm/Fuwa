@@ -2,7 +2,7 @@ import os
 import time
 import collections
 from infrastructure.llm import generate_comment, generate_choices, process_interaction, summarize_files_batch
-from infrastructure.memory import get_all_memories, search_memory, update_memory
+from infrastructure.memory import get_all_memories, search_memory, update_memory, update_memories
 from infrastructure.config import load_config, save_config, update_config
 
 class FuwaBrain:
@@ -101,8 +101,7 @@ class FuwaBrain:
             try:
                 summaries = summarize_files_batch(files_to_summarize, **llm_kwargs)
                 if summaries:
-                    for k, v in summaries.items():
-                        update_memory(k, v)
+                    update_memories(summaries)
                     self.bus.publish("memory_updated")
             except Exception as e:
                 pass
@@ -182,8 +181,7 @@ class FuwaBrain:
         )
         
         if mem_updates:
-            for k, v in mem_updates.items():
-                update_memory(k, v)
+            update_memories(mem_updates)
         if new_personality:
             update_config("personality", new_personality)
             self.config["personality"] = new_personality
