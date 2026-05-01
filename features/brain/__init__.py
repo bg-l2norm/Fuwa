@@ -1,6 +1,7 @@
 import os
 import time
 import collections
+import concurrent.futures
 from infrastructure.llm import generate_comment, generate_choices, process_interaction, summarize_files_batch
 from infrastructure.memory import get_all_memories, search_memory, update_memory, update_memories
 from infrastructure.config import load_config, save_config, update_config
@@ -86,16 +87,23 @@ class FuwaBrain:
 
         # Summarize files modified
         files_to_summarize = []
-        for event in events:
-            if event["action"] in ("modified", "created"):
-                filepath = event["absolute_path"]
-                if os.path.isfile(filepath):
-                    try:
-                        with open(filepath, "r", encoding="utf-8") as f:
-                            content = f.read(1500)
-                        files_to_summarize.append({"filename": event["filename"], "content": content})
-                    except Exception:
-                        pass
+
+        def read_file_content(event):
+            filepath = event["absolute_path"]
+            if os.path.isfile(filepath):
+                try:
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        content = f.read(1500)
+                    return {"filename": event["filename"], "content": content}
+                except Exception:
+                    pass
+            return None
+
+        relevant_events = [e for e in events if e["action"] in ("modified", "created")]
+        if relevant_events:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                results = list(executor.map(read_file_content, relevant_events))
+                files_to_summarize = [r for r in results if r is not None]
         
         if files_to_summarize:
             try:
