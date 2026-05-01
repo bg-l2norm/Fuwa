@@ -253,7 +253,19 @@ def generate_choices(recent_context: str, personality: str, provider: str, model
         print(f"Error generating choices: {e}")
         return ["*Stare blankly*", "*Go back to work*", "*Poke axolotl*"]
 
-def process_interaction(interaction: str, recent_context: str, personality: str, available_moods: list[str], provider: str, model: str, api_key: str, is_startup: bool = False) -> tuple[str, dict, str]:
+def _is_path_safe(path: str, allowed_roots: list[str]) -> bool:
+    """Checks if a path is within the allowed root directories."""
+    try:
+        abs_path = os.path.abspath(os.path.expanduser(os.path.expandvars(path)))
+        for root in allowed_roots:
+            abs_root = os.path.abspath(os.path.expanduser(os.path.expandvars(root)))
+            if abs_path == abs_root or abs_path.startswith(os.path.join(abs_root, '')):
+                return True
+        return False
+    except Exception:
+        return False
+
+def process_interaction(interaction: str, recent_context: str, personality: str, available_moods: list[str], provider: str, model: str, api_key: str, is_startup: bool = False, watch_folders: list[str] = None) -> tuple[str, dict, str]:
     """
     Processes user interaction and generates axolotl's response.
     Returns: (ai_response, memory_updates, new_personality)
@@ -261,6 +273,9 @@ def process_interaction(interaction: str, recent_context: str, personality: str,
     New personality is a string, could be None if no update.
     """
     import subprocess
+
+    if watch_folders is None:
+        watch_folders = ["."]
 
     moods_str = ", ".join(f"[MOOD: {m}]" for m in available_moods)
 
@@ -360,20 +375,39 @@ def process_interaction(interaction: str, recent_context: str, personality: str,
                     if not raw_args:
                         raise Exception("Empty command.")
 
-                    allowed_commands = {'ls', 'cat', 'grep', 'head', 'tail', 'find', 'pwd'}
+                    allowed_commands = {'ls', 'cat', 'grep', 'head', 'tail', 'pwd'}
                     if raw_args[0] not in allowed_commands:
                         raise Exception(f"Command '{raw_args[0]}' is not allowed. Only read-only commands ({', '.join(allowed_commands)}) are permitted.")
 
                     args = []
-                    for arg in raw_args:
+                    for i, arg in enumerate(raw_args):
+                        if i == 0:
+                            args.append(arg)
+                            continue
+
+                        # Basic check for flags to prevent path injection in flags (e.g. grep -f/etc/passwd)
+                        if arg.startswith("-"):
+                            if "/" in arg or ".." in arg:
+                                raise Exception(f"Potential path injection in flag: {arg}")
+                            args.append(arg)
+                            continue
+
                         expanded_arg = os.path.expanduser(os.path.expandvars(arg))
                         if any(c in expanded_arg for c in ('*', '?', '[')):
                             matches = glob.glob(expanded_arg)
                             if matches:
+                                for m in matches:
+                                    if not _is_path_safe(m, watch_folders):
+                                        raise Exception(f"Access to path '{m}' is forbidden.")
                                 args.extend(matches)
                             else:
+                                # If glob doesn't match anything, still check the expanded path
+                                if not _is_path_safe(expanded_arg, watch_folders):
+                                    raise Exception(f"Access to path '{expanded_arg}' is forbidden.")
                                 args.append(expanded_arg)
                         else:
+                            if not _is_path_safe(expanded_arg, watch_folders):
+                                raise Exception(f"Access to path '{expanded_arg}' is forbidden.")
                             args.append(expanded_arg)
 
                     result = subprocess.run(args, capture_output=True, text=True, timeout=5)

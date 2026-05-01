@@ -128,6 +128,7 @@ class FuwaBrain:
                 personality=personality,
                 available_moods=available_moods,
                 is_startup=True,
+                watch_folders=self.config.get("watch_folders", ["."]),
                 **llm_kwargs
             )
             comment = ai_response
@@ -177,6 +178,7 @@ class FuwaBrain:
             recent_context=context,
             personality=personality,
             available_moods=available_moods,
+            watch_folders=self.config.get("watch_folders", ["."]),
             **llm_kwargs
         )
         
