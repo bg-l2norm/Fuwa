@@ -65,71 +65,17 @@ def _remove_background(img):
     except ImportError:
         pass
 
-    width, height = img.size
-    pixels = img.load()
-    from collections import deque
+    data = bytearray(img.tobytes())
+    for i in range(0, len(data), 4):
+        a = data[i+3]
+        if a > 0:
+            r = data[i]
+            g = data[i+1]
+            b = data[i+2]
+            if (255-r)**2 + (255-g)**2 + (255-b)**2 < 1000:
+                data[i+3] = 0
 
-    # Use bytearray instead of set for fast visited tracking
-    visited = bytearray(width * height)
-
-    valid_queue = deque()
-
-    def check_and_add(x, y):
-        idx = y * width + x
-        if not visited[idx]:
-            visited[idx] = 1
-            r, g, b, a = pixels[x, y]
-            if a == 0 or ((255 - r)**2 + (255 - g)**2 + (255 - b)**2 < 1000):
-                valid_queue.append((x, y))
-
-    # Collect boundary pixels
-    for x in range(width):
-        check_and_add(x, 0)
-        check_and_add(x, height - 1)
-    for y in range(1, height - 1): # Skip corners as they are covered above
-        check_and_add(0, y)
-        check_and_add(width - 1, y)
-
-    while valid_queue:
-        x, y = valid_queue.popleft()
-        r, g, b, a = pixels[x, y]
-        pixels[x, y] = (r, g, b, 0)
-
-        # Inline coordinate checks and visited check for speed
-        if x > 0:
-            nx, ny = x - 1, y
-            idx = ny * width + nx
-            if not visited[idx]:
-                visited[idx] = 1
-                nr, ng, nb, na = pixels[nx, ny]
-                if na == 0 or ((255 - nr)**2 + (255 - ng)**2 + (255 - nb)**2 < 1000):
-                    valid_queue.append((nx, ny))
-        if x < width - 1:
-            nx, ny = x + 1, y
-            idx = ny * width + nx
-            if not visited[idx]:
-                visited[idx] = 1
-                nr, ng, nb, na = pixels[nx, ny]
-                if na == 0 or ((255 - nr)**2 + (255 - ng)**2 + (255 - nb)**2 < 1000):
-                    valid_queue.append((nx, ny))
-        if y > 0:
-            nx, ny = x, y - 1
-            idx = ny * width + nx
-            if not visited[idx]:
-                visited[idx] = 1
-                nr, ng, nb, na = pixels[nx, ny]
-                if na == 0 or ((255 - nr)**2 + (255 - ng)**2 + (255 - nb)**2 < 1000):
-                    valid_queue.append((nx, ny))
-        if y < height - 1:
-            nx, ny = x, y + 1
-            idx = ny * width + nx
-            if not visited[idx]:
-                visited[idx] = 1
-                nr, ng, nb, na = pixels[nx, ny]
-                if na == 0 or ((255 - nr)**2 + (255 - ng)**2 + (255 - nb)**2 < 1000):
-                    valid_queue.append((nx, ny))
-
-    return img
+    return Image.frombytes("RGBA", img.size, bytes(data))
 
 def get_content_bounds(image_path):
     try:
@@ -209,7 +155,7 @@ def convert_image_to_ansi(image_path, target_width=40, crop_box=None):
     ansi_lines = []
     final_pixels = final_img.load()
     for y in range(0, target_height, 2):
-        line = ""
+        line_parts = []
         for x in range(out_width):
             r1, g1, b1, a1 = final_pixels[x, y]
             r2, g2, b2, a2 = final_pixels[x, y+1] if y+1 < target_height else (0, 0, 0, 0)
@@ -219,14 +165,14 @@ def convert_image_to_ansi(image_path, target_width=40, crop_box=None):
             bottom_opaque = a2 > 127
 
             if top_opaque and bottom_opaque:
-                line += f"\033[38;2;{r1};{g1};{b1}m\033[48;2;{r2};{g2};{b2}m▀\033[0m"
+                line_parts.append(f"\033[38;2;{r1};{g1};{b1}m\033[48;2;{r2};{g2};{b2}m▀\033[0m")
             elif top_opaque:
-                line += f"\033[38;2;{r1};{g1};{b1}m▀\033[0m"
+                line_parts.append(f"\033[38;2;{r1};{g1};{b1}m▀\033[0m")
             elif bottom_opaque:
-                line += f"\033[38;2;{r2};{g2};{b2}m▄\033[0m"
+                line_parts.append(f"\033[38;2;{r2};{g2};{b2}m▄\033[0m")
             else:
-                line += " "
-        ansi_lines.append(line)
+                line_parts.append(" ")
+        ansi_lines.append("".join(line_parts))
 
     return "\n".join(ansi_lines)
 
